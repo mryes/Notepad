@@ -5,7 +5,7 @@
 	var makeNote = notepad.makeNote;
 	var notesFromIntervals = notepad.notesFromIntervals;
 
-	var gridShades = [200, 180, 230, 200];
+	var gridShades = [230, 210, 250, 230];
 
 	var makePadView = function(id)
 	{
@@ -18,8 +18,8 @@
 		var gridRows = 20;
 		var noteWidth = canvasWidth / gridColumns;
 		var noteHeight = canvasHeight / gridRows;
-		var lastVisibleRow = 30;
 		var firstVisibleColumn = 0;
+		var lastVisibleRow = 0;
 
 		var colorStyle = function(r, g, b)
 		{
@@ -61,24 +61,30 @@
 
 		var drawNotes = function(notes)
 		{
-			ctx.fillStyle = colorStyle(0, 0, 0);
 			for (var i=0; i<notes.length; i++)
 			{
 				var fullValue = notes[i].pitch.fullValue();
 				var duration = notes[i].durationInBeats;
 				var startTime = notes[i].startTimeInBeats;
-				ctx.fillRect(
-					startTime * noteWidth,
-					(canvasHeight - noteHeight) - fullValue * noteHeight,
-					duration * noteWidth,
-					noteHeight);
+				if (fullValue < lastVisibleRow ||
+					fullValue > lastVisibleRow + gridColumns)
+					continue;
+				var bottomCell = canvasHeight - noteHeight;
+				var x = startTime * noteWidth;
+				var y = bottomCell - ((fullValue - lastVisibleRow) * noteHeight);
+				var w = duration * noteWidth;
+				var h = noteHeight;
+				ctx.fillStyle = ctx.createLinearGradient(x, y, x, y+h);
+				ctx.fillStyle.addColorStop(0, "gray");
+				ctx.fillStyle.addColorStop(1, "black");
+				ctx.fillRect(x, y, w, h);
 			}
 		};
 
 		var draw = function(notes)
 		{
 			ctx.fillStyle = colorStyle(255, 255, 255);
-			ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+			ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 			drawGrid();
 			if (notes !== undefined)
 				drawNotes(notes);
@@ -159,11 +165,15 @@
 		var pad = makePad();
 		var padView = makePadView("interface");
 		padView.pad = pad;
-		var testChord = notesFromIntervals(notepad.chords.minor, makeNote(0, 0));
-		for (var i=0; i<testChord.length; i++)
+		var testChord = notesFromIntervals(notepad.chords.diminishedSeventh, makeNote(0, 0));
+		for (var i=0; i<20; i+=2)
 		{
-			console.log(testChord[i]);
-			pad.addNote(testChord[i], 0, 1);
+			var length = Math.round(Math.random() * 3 + 0.5);
+			for (var j = 0; j < testChord.length; j++)
+			{
+				pad.addNote(testChord[j], i, length);
+			}
+			i += length;
 		}
 	};
 
