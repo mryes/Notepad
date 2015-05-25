@@ -39,6 +39,7 @@ notepad.scales =
 	{
 		if (!Array.isArray(fields))
 			throw new TypeError("Expected array.");
+
 		return function(params)
 		{
 			var object = {};
@@ -90,7 +91,7 @@ notepad.scales =
 			value++;
 		if (symbol === "b")
 			value--;
-		return (value % notesInOctave) + 1;
+		return value % notesInOctave;
 	};
 
 	var namedTuple = notepad.misc.namedTuple;
@@ -123,14 +124,11 @@ notepad.scales =
 			return string;
 		};
 
-		// If new, add to pool of note objects
+		// If new, add to pool of note objects;
 		// otherwise, grab the existing one
 		var string = obj.toString();
 		if (notepad.notes[string] !== undefined)
-		{
-			obj = notepad.notes[string];
-			return obj;
-		}
+			return notepad.notes[string];
 		else notepad.notes[string] = obj;
 
 		obj.transpose = function(interval)
@@ -138,7 +136,7 @@ notepad.scales =
 			var fullValue = this.value + this.octave * notesInOctave;
 			fullValue += interval;
 			if (fullValue <= 0)
-				return makeNote(1, 1);
+				return makeNote(0, 0);
 			var newValue = fullValue % notesInOctave;
 			var newOctave = Math.floor(fullValue / notesInOctave);
 			return makeNote(newValue, newOctave);
@@ -176,8 +174,21 @@ notepad.scales =
 		return true;
 	};
 
+	var chordIsSubset = notepad.chordIsSubset;
 	var chords = notepad.chords;
 	var scales = notepad.scales;
+
+	notepad.compatibleChords = function(scale, scaleBaseNote, chordBaseNote)
+	{
+		var scaleNotes = notesFromIntervals(scale, scaleBaseNote);
+		var compatibleList = [];
+		for (var chord in chords)
+		{
+			if (chordIsSubset(chords[chord], chordBaseNote, scaleNotes))
+				compatibleList.push(chord);
+		}
+		return compatibleList;
+	};
 
 	var note = makeNote(0, 5);
 	var noteAgain = makeNote(0, 5);
@@ -185,8 +196,7 @@ notepad.scales =
 	var majorScaleNotes = notesFromIntervals(scales.major, note);
 	console.log(majorChordNotes);
 	console.log(majorScaleNotes);
-	console.log(notepad.chordIsSubset(chords.major, note, majorScaleNotes));
-
+	console.log(notepad.compatibleChords(scales.major, makeNote(0, 5), makeNote(0, 5)));
 
 })(); // end function
 
