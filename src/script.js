@@ -9,14 +9,18 @@ notepad.notesInOctave = 12;
 notepad.chords =
 {
 	major: [4, 7],
+	majorSeventh: [4, 7, 11],
 	majorSixth: [4, 7, 9],
+	majorNinth: [4, 7, 9, 14],
 	minor: [3, 7],
 	minorSixth: [3, 7, 9],
 	diminished: [3, 6],
 	diminishedSeventh: [3, 6, 9],
+	halfDiminishedSeventh: [3, 6, 10],
 	augmented: [4, 8],
 	augmentedSixth: [6, 8],
 	suspended: [5, 7],
+	dominantSeventh: [4, 7, 10],
 	dream: [5, 6, 7],
 	mu: [2, 4, 7]
 };
@@ -26,7 +30,9 @@ notepad.scales =
 {
 	major: [2, 4, 5, 7, 9, 11],
 	naturalMinor: [2, 3, 5, 7, 8, 10],
-	harmonicMinor: [2, 3, 5, 7, 8, 11]
+	harmonicMinor: [2, 3, 5, 7, 8, 11],
+	pentatonic: [2, 4, 7, 9],
+	chromatic: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 };
 
 (function() { "use strict";
@@ -118,6 +124,7 @@ notepad.scales =
 			var string = "";
 			for (var field in obj)
 			{
+				if (!obj.hasOwnProperty(field)) continue;
 				if (typeof obj[field] === "function") continue;
 				string += obj[field] + " ";
 			}
@@ -164,10 +171,11 @@ notepad.scales =
 		// todo: find out why creating this within the loop is wrong
 		var existsTest = function(note)
 		{
-			return note === this;
+			return note.value === this.value;
 		};
 		for (var note in chordNotes)
 		{
+			if (!chordNotes.hasOwnProperty(note)) continue;
 			if (!notes.some(existsTest, chordNotes[note]))
 				return false;
 		}
@@ -184,19 +192,14 @@ notepad.scales =
 		var compatibleList = [];
 		for (var chord in chords)
 		{
+			if (!chords.hasOwnProperty(chord)) continue;
 			if (chordIsSubset(chords[chord], chordBaseNote, scaleNotes))
 				compatibleList.push(chord);
 		}
 		return compatibleList;
 	};
 
-	var note = makeNote(0, 5);
-	var noteAgain = makeNote(0, 5);
-	var majorChordNotes = notesFromIntervals(chords.major, note);
-	var majorScaleNotes = notesFromIntervals(scales.major, note);
-	console.log(majorChordNotes);
-	console.log(majorScaleNotes);
-	console.log(notepad.compatibleChords(scales.major, makeNote(0, 5), makeNote(0, 5)));
+	console.log(notepad.compatibleChords(scales.major, makeNote(2, 5), makeNote(1, 5)));
 
 })(); // end function
 
