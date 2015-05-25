@@ -1,0 +1,4 @@
+node_modules/
+.idea/
+karma.conf.js
+soundfont/

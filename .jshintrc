@@ -1,0 +1,7 @@
+{
+  "eqeqeq": true,
+  "es5": true,
+  "freeze": true,
+  "noarg": true,
+  "notypeof": true
+}
