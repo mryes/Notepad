@@ -21,6 +21,19 @@
 			return point.x > this.x && point.x < rectX2 &&
 				point.y > this.y && point.y < rectY2 ;
 		};
+
+		obj.unreverse = function()
+		{
+			var newSize = makeVector(
+				Math.abs(this.w), Math.abs(this.h));
+			var newX = this.x;
+			var newY = this.y;
+			if (this.w < 0)
+				newX += this.w;
+			if (this.h < 0)
+				newY += this.h;
+			return makeRect(newX, newY, newSize.x, newSize.y);
+		};
 	});
 
 	var makeColor = notepad.namedTuple(["r", "g", "b", "a"], function(obj)
@@ -65,6 +78,7 @@
 		var highlightedCell = makeVector(-1, -1);
 
 		var noteRectPending = makeRect(-1, -1, -1, -1);
+		var noteRectPendingStart = noteRectPending;
 		var drawingNote = false;
 
 		var drawGrid = function()
@@ -137,6 +151,8 @@
 
 		var drawNoteRect = function(rect)
 		{
+			rect = rect.unreverse();
+
 			var x = rect.x;
 			var y = rect.y;
 			var w = rect.w;
@@ -174,7 +190,7 @@
 
 			for (var i = 0; i < notes.length; i++)
 			{
-				var noteRect = rectFromNote(notes[i]);
+				var noteRect = rectFromNote(notes[i]).unreverse();
 
 				drawNoteRect(noteRect);
 
@@ -188,10 +204,11 @@
 					pointingAtNote = true;
 			}
 
-			drawNoteRect(noteRectPending);
-			drawNoteHighlight(noteRectPending, creatingHighlightColor);
-			if (noteRectPending.contains(pointerLocation) ||
-				cellFromCanvasPosition(noteRectPending.x, noteRectPending.y)
+			var pendingNoteUnreversed = noteRectPending.unreverse();
+			drawNoteRect(pendingNoteUnreversed);
+			drawNoteHighlight(pendingNoteUnreversed, creatingHighlightColor);
+			if (pendingNoteUnreversed.contains(pointerLocation) ||
+				cellFromCanvasPosition(pendingNoteUnreversed.x, pendingNoteUnreversed.y)
 					.equals(highlightedCell))
 				pointingAtNote = true;
 
@@ -274,6 +291,7 @@
 				highlightedCell.x * noteWidth,
 				highlightedCell.y * noteHeight,
 				noteWidth, noteHeight);
+			noteRectPendingStart = noteRectPending;
 			draw();
 		});
 
@@ -285,7 +303,7 @@
 			{
 				drawingNote = false;
 				for (var i=0; i<onNoteRectCreated.length; i++)
-					onNoteRectCreated[i](noteFromRect(noteRectPending));
+					onNoteRectCreated[i](noteFromRect(noteRectPending.unreverse()));
 				noteRectPending = makeRect(-1, -1, -1, -1);
 				draw();
 			}
@@ -317,13 +335,20 @@
 			if (drawingNote)
 			{
 				var startCell = cellFromCanvasPosition(
-					noteRectPending.x, noteRectPending.y);
-				var distanceX = highlightedCell.x - startCell.x + 1;
+					noteRectPendingStart.x, noteRectPendingStart.y);
+				var distanceX = (highlightedCell.x + 1) - startCell.x;
+				var newX;
+				var newWidth = distanceX * noteWidth;
 				if (distanceX < 1)
-					distanceX = 1;
+				{
+					newX = ((startCell.x - 1) + distanceX) * noteWidth;
+					newWidth = ((startCell.x + 1) * noteWidth) - newX;
+				}
+				else newX = noteRectPendingStart.x;
+
 				noteRectPending = makeRect(
-					noteRectPending.x, noteRectPending.y,
-					distanceX * noteWidth, noteRectPending.h);
+					newX, noteRectPending.y,
+					newWidth, noteRectPending.h);
 			}
 
 			draw();
@@ -380,7 +405,8 @@
 				var currentNoteStart = notes[i].startTimeInBeats;
 				var currentNoteEnd = currentNoteStart + notes[i].durationInBeats;
 				if (newNoteStart >= currentNoteStart && newNoteStart <= currentNoteEnd ||
-					newNoteEnd >= currentNoteStart && newNoteEnd <= currentNoteEnd)
+					newNoteEnd >= currentNoteStart && newNoteEnd <= currentNoteEnd ||
+					newNoteStart <= currentNoteStart && newNoteEnd >= currentNoteEnd)
 				{
 					overlapping.push({
 						note: notes[i],
@@ -398,7 +424,6 @@
 				durationInBeats: durationInBeats};
 
 			var overlapping= overlappingNotes(note);
-			console.log(overlapping.length);
 			var newNotes = [];
 			for (var i=0; i<overlapping.length; i++)
 			{
