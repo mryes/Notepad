@@ -42,7 +42,7 @@
 		var lastVisibleRow = 0;
 
 		var pointerLocation = makeVector(-1, -1);
-		var highlightedCell = makeVector(0, 19);
+		var highlightedCell = makeVector(-1, -1);
 
 		var colorStyle = function(r, g, b)
 		{
@@ -106,6 +106,15 @@
 				ctx.fillStyle.addColorStop(1, "black");
 				ctx.fillRect(x, y, w, h);
 
+				ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+				ctx.lineWidth = 4;
+				ctx.setLineDash([1]);
+				ctx.beginPath();
+				ctx.moveTo(x + w, y + h);
+				ctx.lineTo(x + w, y);
+				ctx.stroke();
+				ctx.setLineDash([]);
+
 				var cellRect = {
 					x1: x, y1: y,
 					x2: x + w, y2: y + h};
@@ -120,12 +129,13 @@
 			if (pointingAtNote)
 				ctx.strokeStyle = colorStyle(255, 255, 255);
 			else ctx.strokeStyle = colorStyle(0, 0, 0);
-			ctx.lineWidth = noteWidth / 10;
+			var strokeWidth = noteWidth / 10;
+			ctx.lineWidth = strokeWidth;
 			ctx.strokeRect(
-				highlightedCell.x * noteWidth + 4,
-				highlightedCell.y * noteHeight + 4,
-				noteWidth - 8,
-				noteHeight - 8);
+				highlightedCell.x * noteWidth + strokeWidth*2 ,
+				highlightedCell.y * noteHeight + strokeWidth*2,
+				noteWidth - strokeWidth*4,
+				noteHeight - strokeWidth*4);
 		};
 
 		// If draw is called without notes,
@@ -248,7 +258,7 @@
 		var padView = makePadView("interface");
 		padView.pad = pad;
 		var testChord = notesFromIntervals(notepad.chords.majorNinth, makeNote(0, 0));
-		for (var i=0; i<20; i+=2)
+		for (var i=0; i<20;)
 		{
 			var length = Math.round(Math.random() * 3 + 0.5);
 			for (var j = 0; j < testChord.length; j++)
