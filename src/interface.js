@@ -3,7 +3,6 @@
 	"use strict";
 
 	var makeNote = notepad.makeNote;
-	var notesFromIntervals = notepad.notesFromIntervals;
 
 	var makeVector = notepad.namedTuple(["x", "y"], function(obj)
 	{
@@ -13,15 +12,35 @@
 		};
 	});
 
-	var makeRect = notepad.namedTuple(["x", "y", "w", "h"]);
-
-	var insideRect = function(point, rect)
+	var makeRect = notepad.namedTuple(["x", "y", "w", "h"], function(obj)
 	{
-		var rectX2 = rect.x + rect.w;
-		var rectY2 = rect.y + rect.h;
-		return point.x > rect.x && point.x < rectX2 &&
-			point.y > rect.y && point.y < rectY2 ;
-	};
+		obj.contains = function(point)
+		{
+			var rectX2 = this.x + this.w;
+			var rectY2 = this.y + this.h;
+			return point.x > this.x && point.x < rectX2 &&
+				point.y > this.y && point.y < rectY2 ;
+		};
+	});
+
+	var makeColor = notepad.namedTuple(["r", "g", "b", "a"], function(obj)
+	{
+		if (obj.a === undefined)
+			obj.a = 1;
+
+		obj.styleString = function()
+		{
+			var string = "(" + obj.r + "," + obj.g + "," + obj.b;
+			if (obj.a !== 1)
+			{
+				string = "rgba" + string;
+				string += "," + obj.a;
+			}
+			else string = "rgb" + string;
+			string += ")";
+			return string;
+		};
+	});
 
 	var makePadView = function(id)
 	{
@@ -48,19 +67,14 @@
 		var noteRectPending = makeRect(-1, -1, -1, -1);
 		var drawingNote = false;
 
-		var colorStyle = function(r, g, b)
-		{
-			return "rgb(" + r + "," + g + "," + b + ")";
-		};
-
-		var colorStyleFromShade = function(shade)
-		{
-			return colorStyle(shade, shade, shade);
-		};
-
 		var drawGrid = function()
 		{
 			var gridShades = [230, 210, 250, 230];
+
+			var colorStyleFromShade = function(shade)
+			{
+				return makeColor(shade, shade, shade).styleString();
+			};
 
 			for (var y=0; y<gridRows; y+=2)
 			{
@@ -133,19 +147,19 @@
 			ctx.fillStyle.addColorStop(1, "black");
 			ctx.fillRect(x, y, w, h);
 
-			ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+			ctx.strokeStyle = makeColor(255, 255, 255, 0.2).styleString();
 			ctx.lineWidth = 4;
 			ctx.setLineDash([1]);
 			ctx.beginPath();
-			ctx.moveTo(x + w, y + h);
-			ctx.lineTo(x + w, y);
+			ctx.moveTo(x - ctx.lineWidth/2 + w, y + h);
+			ctx.lineTo(x - ctx.lineWidth/2 + w, y);
 			ctx.stroke();
 			ctx.setLineDash([]);
 		};
 
-		var drawNoteHighlight = function(noteRect)
+		var drawNoteHighlight = function(noteRect, highlightColor)
 		{
-			ctx.fillStyle = "rgba(200, 255, 0, 0.5)";
+			ctx.fillStyle = highlightColor.styleString();
 			ctx.fillRect(
 				noteRect.x, noteRect.y,
 				noteRect.w, noteRect.h);
@@ -153,17 +167,20 @@
 
 		var drawNotes = function(notes)
 		{
+			var pointingHighlightColor = makeColor(200, 255, 0, 0.3);
+			var creatingHighlightColor = makeColor(200, 255, 0, 0.6);
+
 			var pointingAtNote = false;
 
-			for (var i=0; i<notes.length; i++)
+			for (var i = 0; i < notes.length; i++)
 			{
 				var noteRect = rectFromNote(notes[i]);
 
 				drawNoteRect(noteRect);
 
-				if (insideRect(pointerLocation, noteRect))
+				if (noteRect.contains(pointerLocation))
 				{
-					drawNoteHighlight(noteRect);
+					drawNoteHighlight(noteRect, pointingHighlightColor);
 					pointingAtNote = true;
 				}
 				else if (cellFromCanvasPosition(noteRect.x, noteRect.y)
@@ -172,15 +189,15 @@
 			}
 
 			drawNoteRect(noteRectPending);
-			drawNoteHighlight(noteRectPending);
-			if (insideRect(pointerLocation, noteRectPending) ||
+			drawNoteHighlight(noteRectPending, creatingHighlightColor);
+			if (noteRectPending.contains(pointerLocation) ||
 				cellFromCanvasPosition(noteRectPending.x, noteRectPending.y)
 					.equals(highlightedCell))
 				pointingAtNote = true;
 
 			if (pointingAtNote)
-				ctx.strokeStyle = colorStyle(255, 255, 255);
-			else ctx.strokeStyle = colorStyle(0, 0, 0);
+				ctx.strokeStyle = makeColor(255, 255, 255).styleString();
+			else ctx.strokeStyle = makeColor(0, 0, 0).styleString();
 			var strokeWidth = noteWidth / 10;
 			ctx.lineWidth = strokeWidth;
 			ctx.strokeRect(
@@ -197,7 +214,7 @@
 			for (var i=0; i<previousNotes.length; i++)
 			{
 				var noteRect = rectFromNote(previousNotes[i]);
-				if (insideRect(position, noteRect))
+				if (noteRect.contains(position))
 					return { found: true, value: previousNotes[i] };
 			}
 			return { found: false, value: undefined };
@@ -208,18 +225,20 @@
 		var previousNotes;
 		var draw = function(notes)
 		{
-			ctx.fillStyle = colorStyle(255, 255, 255);
+			ctx.fillStyle = makeColor(255, 255, 255).styleString();
 			ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
 			drawGrid();
+
+			if (previousNotes === undefined)
+				previousNotes = [];
+
 			if (notes !== undefined)
 			{
 				drawNotes(notes);
-				if (previousNotes === undefined)
-					previousNotes = [];
 				previousNotes = notes;
 			}
-			else if (previousNotes !== undefined)
-				drawNotes(previousNotes);
+			else drawNotes(previousNotes);
 		};
 
 		var onNoteAdded = function(note, allNotes)
@@ -249,8 +268,7 @@
 			if (event.button !== 0)
 				return true;
 			var mouse = mousePositionFromCanvasEvent(event);
-			if (noteAtPosition(mouse).found)
-				return true;
+			event.preventDefault();
 			drawingNote = true;
 			noteRectPending = makeRect(
 				highlightedCell.x * noteWidth,
@@ -283,20 +301,31 @@
 			if (!note.found) return false;
 
 			for (var i=0; i<onNoteRectRightClicked.length; i++)
-			{
 				onNoteRectRightClicked[i](note.value);
-			}
 
 			draw();
 
 			return false;
 		});
 
-		canvas.addEventListener("mousemove", function(event)
+		window.addEventListener("mousemove", function(event)
 		{
 			var mouse = mousePositionFromCanvasEvent(event);
 			highlightedCell = cellFromCanvasPosition(mouse.x, mouse.y);
 			pointerLocation = makeVector(mouse.x, mouse.y);
+
+			if (drawingNote)
+			{
+				var startCell = cellFromCanvasPosition(
+					noteRectPending.x, noteRectPending.y);
+				var distanceX = highlightedCell.x - startCell.x + 1;
+				if (distanceX < 1)
+					distanceX = 1;
+				noteRectPending = makeRect(
+					noteRectPending.x, noteRectPending.y,
+					distanceX * noteWidth, noteRectPending.h);
+			}
+
 			draw();
 		});
 
@@ -339,14 +368,72 @@
 		// parameters: (tonic)
 		var onTonicChanged = [];
 
+		var overlappingNotes = function(note)
+		{
+			var overlapping = [];
+			for (var i=0; i<notes.length; i++)
+			{
+				if (notes[i].pitch !== note.pitch)
+					continue;
+				var newNoteStart = note.startTimeInBeats;
+				var newNoteEnd = newNoteStart + note.durationInBeats;
+				var currentNoteStart = notes[i].startTimeInBeats;
+				var currentNoteEnd = currentNoteStart + notes[i].durationInBeats;
+				if (newNoteStart >= currentNoteStart && newNoteStart <= currentNoteEnd ||
+					newNoteEnd >= currentNoteStart && newNoteEnd <= currentNoteEnd)
+				{
+					overlapping.push({
+						note: notes[i],
+						overlap: {start: newNoteStart, end: newNoteEnd}});
+				}
+			}
+			return overlapping;
+		};
+
 		var addNote = function(pitch, startTimeInBeats, durationInBeats)
 		{
 			var note = {
 				pitch: pitch,
 				startTimeInBeats: startTimeInBeats,
 				durationInBeats: durationInBeats};
+
+			var overlapping= overlappingNotes(note);
+			console.log(overlapping.length);
+			var newNotes = [];
+			for (var i=0; i<overlapping.length; i++)
+			{
+				var pieces = {};
+				var oldNote = overlapping[i].note;
+				var overlap = overlapping[i].overlap;
+				var oldNoteStart = oldNote.startTimeInBeats;
+				var oldNoteEnd = oldNote.startTimeInBeats + oldNote.durationInBeats;
+
+				if (overlap.start > oldNoteStart)
+					pieces.before =  {
+						start: oldNoteStart,
+						duration: overlap.start - oldNoteStart};
+				if (overlap.end < oldNoteEnd)
+					pieces.after = {
+						start: overlap.end,
+						duration: oldNoteEnd - overlap.end};
+
+				if (pieces.before !== undefined)
+					newNotes.push({pitch: pitch,
+						startTimeInBeats: pieces.before.start,
+						durationInBeats: pieces.before.duration});
+				if (pieces.after !== undefined)
+					newNotes.push({pitch: pitch,
+						startTimeInBeats: pieces.after.start,
+						durationInBeats: pieces.after.duration});
+
+				removeNote(oldNote);
+			}
+
+			for (i=0; i<newNotes.length; i++)
+				notes.push(newNotes[i]);
 			notes.push(note);
-			for (var i=0; i<onNoteAdded.length; i++)
+
+			for (i=0; i<onNoteAdded.length; i++)
 				onNoteAdded[i](note, notes);
 		};
 
@@ -407,16 +494,6 @@
 		var padView = makePadView("interface");
 		padView.addPadEvents(pad);
 		pad.addPadViewEvents(padView);
-		var testChord = notesFromIntervals(notepad.chords.majorNinth, makeNote(0, 0));
-		for (var i=0; i<20;)
-		{
-			var length = Math.round(Math.random() * 3 + 0.5);
-			for (var j = 0; j < testChord.length; j++)
-			{
-				pad.addNote(testChord[j], i, length);
-			}
-			i += length + 1;
-		}
 	};
 
 })();
