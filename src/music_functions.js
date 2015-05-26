@@ -33,8 +33,6 @@ notepad.scales =
 	chromatic: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 };
 
-
-
 // All note instances are here, so they can be compared easily
 // (not sure if javascript has an easier way to do this, but it works as-is, so...)
 notepad.notes = {};
@@ -146,17 +144,21 @@ notepad.notes = {};
 
 		obj.transpose = function(interval)
 		{
-			var makeNote = notepad.makeNote;
-
 			var fullValue = this.fullValue();
 			fullValue += interval;
-			if (fullValue <= 0)
-				return makeNote(0, 0);
-			var newValue = fullValue % notesInOctave;
-			var newOctave = Math.floor(fullValue / notesInOctave);
-			return makeNote(newValue, newOctave);
+			return notepad.noteFromFullValue(fullValue);
 		};
 	});
+
+	notepad.noteFromFullValue = function(fullValue)
+	{
+		var notesInOctave = notepad.notesInOctave;
+		if (fullValue <= 0)
+			return makeNote(0, 0);
+		var newValue = fullValue % notesInOctave;
+		var newOctave = Math.floor(fullValue / notesInOctave);
+		return makeNote(newValue, newOctave);
+	};
 
 	notepad.notesFromIntervals = function(intervals, baseNote)
 	{
