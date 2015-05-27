@@ -4,17 +4,21 @@
 
 	var makeNote = notepad.makeNote;
 
-	var makeVector = notepad.namedTuple(["x", "y"], function(obj)
+	var makeVector = function(x, y)
 	{
-		obj.equals = function(other)
+		var equals = function(other)
 		{
-			return obj.x === other.x && obj.y === other.y;
+			return this.x === other.x && this.y === other.y;
 		};
-	});
 
-	var makeRect = notepad.namedTuple(["x", "y", "w", "h"], function(obj)
+		return {
+			x:x, y:y,
+			equals: equals};
+	};
+
+	var makeRect = function(x, y, w, h)
 	{
-		obj.contains = function(point)
+		var contains = function(point)
 		{
 			var rectX2 = this.x + this.w;
 			var rectY2 = this.y + this.h;
@@ -22,7 +26,7 @@
 				point.y > this.y && point.y < rectY2 ;
 		};
 
-		obj.unreverse = function()
+		var unreverse = function()
 		{
 			var newSize = makeVector(
 				Math.abs(this.w), Math.abs(this.h));
@@ -34,26 +38,35 @@
 				newY += this.h;
 			return makeRect(newX, newY, newSize.x, newSize.y);
 		};
-	});
 
-	var makeColor = notepad.namedTuple(["r", "g", "b", "a"], function(obj)
+		return {
+			x:x, y:y, w:w, h:h,
+			contains: contains,
+			unreverse: unreverse};
+	};
+
+	var makeColor = function(r, g, b, a)
 	{
-		if (obj.a === undefined)
-			obj.a = 1;
+		if (a === undefined)
+			a = 1;
 
-		obj.styleString = function()
+		var styleString = function()
 		{
-			var string = "(" + obj.r + "," + obj.g + "," + obj.b;
-			if (obj.a !== 1)
+			var string = "(" + this.r + "," + this.g + "," + this.b;
+			if (this.a !== 1)
 			{
 				string = "rgba" + string;
-				string += "," + obj.a;
+				string += "," + this.a;
 			}
 			else string = "rgb" + string;
 			string += ")";
 			return string;
 		};
-	});
+
+		return {
+			r:r, g:g, b:b, a:a,
+			styleString: styleString};
+	};
 
 	var makePadView = function(id)
 	{
@@ -81,8 +94,14 @@
 		var noteRectPendingStart = noteRectPending;
 		var drawingNote = false;
 
-		var drawGrid = function()
+		var predrawnGridCanvas = document.createElement("canvas");
+		predrawnGridCanvas.width = canvas.width;
+		predrawnGridCanvas.height = canvas.height;
+		var predrawnGridContext = predrawnGridCanvas.getContext("2d");
+		var predrawGrid = function()
 		{
+			var pctx = predrawnGridContext;
+
 			var gridShades = [230, 210, 250, 230];
 
 			var colorStyleFromShade = function(shade)
@@ -97,24 +116,32 @@
 					var ctxPosition = makeVector(
 						canvasGridStart.x + x * noteWidth,
 						canvasGridStart.y + y * noteHeight);
-					ctx.fillStyle = colorStyleFromShade(gridShades[0]);
-					ctx.fillRect(
+
+					pctx.fillStyle = colorStyleFromShade(gridShades[0]);
+					pctx.fillRect(
 						ctxPosition.x, ctxPosition.y,
 						noteWidth, noteHeight);
-					ctx.fillStyle = colorStyleFromShade(gridShades[1]);
-					ctx.fillRect(
+					pctx.fillStyle = colorStyleFromShade(gridShades[1]);
+					pctx.fillRect(
 						ctxPosition.x + noteWidth, ctxPosition.y,
 						noteWidth, noteHeight);
-					ctx.fillStyle = colorStyleFromShade(gridShades[2]);
-					ctx.fillRect(
+					pctx.fillStyle = colorStyleFromShade(gridShades[2]);
+					pctx.fillRect(
 						ctxPosition.x, ctxPosition.y + noteHeight,
 						noteWidth, noteHeight);
-					ctx.fillStyle = colorStyleFromShade(gridShades[3]);
-					ctx.fillRect(
+					pctx.fillStyle = colorStyleFromShade(gridShades[3]);
+					pctx.fillRect(
 						ctxPosition.x + noteWidth, ctxPosition.y + noteHeight,
 						noteWidth, noteHeight);
 				}
 			}
+		};
+
+		predrawGrid();
+
+		var drawGrid = function()
+		{
+			ctx.drawImage(predrawnGridCanvas, 0, 0);
 		};
 
 		var rectFromNote = function(note)
@@ -149,10 +176,21 @@
 				durationInBeats: duration};
 		};
 
+		var noteAtPosition = function(position)
+		{
+			if (previousNotes === undefined)
+				return { found: false, value: undefined };
+			for (var i=0; i<previousNotes.length; i++)
+			{
+				var noteRect = rectFromNote(previousNotes[i]);
+				if (noteRect.contains(position))
+					return { found: true, value: previousNotes[i] };
+			}
+			return { found: false, value: undefined };
+		};
+
 		var drawNoteRect = function(rect)
 		{
-			rect = rect.unreverse();
-
 			var x = rect.x;
 			var y = rect.y;
 			var w = rect.w;
@@ -224,19 +262,6 @@
 				noteHeight - strokeWidth*4);
 		};
 
-		var noteAtPosition = function(position)
-		{
-			if (previousNotes === undefined)
-				return { found: false, value: undefined };
-			for (var i=0; i<previousNotes.length; i++)
-			{
-				var noteRect = rectFromNote(previousNotes[i]);
-				if (noteRect.contains(position))
-					return { found: true, value: previousNotes[i] };
-			}
-			return { found: false, value: undefined };
-		};
-
 		// If draw is called without notes,
 		// it will use the notes from last time
 		var previousNotes;
@@ -257,6 +282,8 @@
 			}
 			else drawNotes(previousNotes);
 		};
+
+
 
 		var onNoteAdded = function(note, allNotes)
 		{
