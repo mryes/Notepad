@@ -68,22 +68,17 @@
 			styleString: styleString};
 	};
 
-	var makePadView = function(id)
+	var makeNoteGrid = function(canvasID)
 	{
-		var canvas = document.getElementById(id);
+		var canvas = document.getElementById(canvasID);
 		var ctx = canvas.getContext("2d");
-
 		var canvasWidth = parseInt(canvas.getAttribute("width"));
 		var canvasHeight = parseInt(canvas.getAttribute("height"));
-		var canvasGridStart = makeVector(0, 0);
-		var canvasGridSize = makeVector(
-			canvasWidth - canvasGridStart.x,
-			canvasHeight - canvasGridStart.y);
+
 		var gridColumns = 30;
 		var gridRows = 20;
-		var noteWidth = canvasGridSize.x / gridColumns;
-		var noteHeight = canvasGridSize.y / gridRows;
-
+		var noteWidth = canvasWidth / gridColumns;
+		var noteHeight = canvasHeight / gridRows;
 		var firstVisibleColumn = 0;
 		var lastVisibleRow = 0;
 
@@ -94,56 +89,6 @@
 		var noteRectPendingStart = noteRectPending;
 		var drawingNote = false;
 
-		var predrawnGridCanvas = document.createElement("canvas");
-		predrawnGridCanvas.width = canvas.width;
-		predrawnGridCanvas.height = canvas.height;
-		var predrawnGridContext = predrawnGridCanvas.getContext("2d");
-		var predrawGrid = function()
-		{
-			var pctx = predrawnGridContext;
-
-			var gridShades = [230, 210, 250, 230];
-
-			var colorStyleFromShade = function(shade)
-			{
-				return makeColor(shade, shade, shade).styleString();
-			};
-
-			for (var y=0; y<gridRows; y+=2)
-			{
-				for (var x=0; x<gridColumns; x+=2)
-				{
-					var ctxPosition = makeVector(
-						canvasGridStart.x + x * noteWidth,
-						canvasGridStart.y + y * noteHeight);
-
-					pctx.fillStyle = colorStyleFromShade(gridShades[0]);
-					pctx.fillRect(
-						ctxPosition.x, ctxPosition.y,
-						noteWidth, noteHeight);
-					pctx.fillStyle = colorStyleFromShade(gridShades[1]);
-					pctx.fillRect(
-						ctxPosition.x + noteWidth, ctxPosition.y,
-						noteWidth, noteHeight);
-					pctx.fillStyle = colorStyleFromShade(gridShades[2]);
-					pctx.fillRect(
-						ctxPosition.x, ctxPosition.y + noteHeight,
-						noteWidth, noteHeight);
-					pctx.fillStyle = colorStyleFromShade(gridShades[3]);
-					pctx.fillRect(
-						ctxPosition.x + noteWidth, ctxPosition.y + noteHeight,
-						noteWidth, noteHeight);
-				}
-			}
-		};
-
-		predrawGrid();
-
-		var drawGrid = function()
-		{
-			ctx.drawImage(predrawnGridCanvas, 0, 0);
-		};
-
 		var rectFromNote = function(note)
 		{
 			var fullValue = note.pitch.fullValue();
@@ -152,9 +97,9 @@
 			if (fullValue < lastVisibleRow ||
 				fullValue > lastVisibleRow + gridColumns)
 				return makeRect(0, 0, 0, 0);
-			var bottomCell = canvasHeight - noteHeight - canvasGridStart.y;
-			var x = canvasGridStart.x + startTime * noteWidth;
-			var y = canvasGridStart.y + bottomCell -
+			var bottomCell = canvasHeight - noteHeight;
+			var x = startTime*noteWidth;
+			var y = bottomCell -
 				((fullValue - lastVisibleRow) * noteHeight);
 			var w = duration * noteWidth;
 			var h = noteHeight;
@@ -163,10 +108,10 @@
 
 		var noteFromRect = function(rect)
 		{
-			var startTime = (rect.x - canvasGridStart.x) / noteWidth;
-			var bottomCell = canvasHeight - noteHeight - canvasGridStart.y;
+			var startTime = (rect.x) / noteWidth;
+			var bottomCell = canvasHeight - noteHeight;
 			var fullValue =
-				(bottomCell + canvasGridStart.y +
+				(bottomCell +
 				lastVisibleRow*noteHeight - rect.y) /
 				noteHeight;
 			fullValue = Math.floor(fullValue);
@@ -187,6 +132,62 @@
 					return { found: true, value: previousNotes[i] };
 			}
 			return { found: false, value: undefined };
+		};
+
+		var cellFromCanvasPosition = function(x, y)
+		{
+			return makeVector(
+				Math.floor(x / noteWidth),
+				Math.floor(y / noteHeight));
+		};
+
+		var predrawnGridCanvas = document.createElement("canvas");
+		predrawnGridCanvas.width = canvas.width;
+		predrawnGridCanvas.height = canvas.height;
+		var predrawnGridContext = predrawnGridCanvas.getContext("2d");
+
+		(function predrawGrid()
+		{
+			var pctx = predrawnGridContext;
+
+			var gridShades = [230, 210, 250, 230];
+
+			var colorStyleFromShade = function(shade)
+			{
+				return makeColor(shade, shade, shade).styleString();
+			};
+
+			for (var y=0; y<gridRows; y+=2)
+			{
+				for (var x=0; x<gridColumns; x+=2)
+				{
+					var ctxPosition = makeVector(
+						x * noteWidth,
+						y * noteHeight);
+
+					pctx.fillStyle = colorStyleFromShade(gridShades[0]);
+					pctx.fillRect(
+						ctxPosition.x, ctxPosition.y,
+						noteWidth, noteHeight);
+					pctx.fillStyle = colorStyleFromShade(gridShades[1]);
+					pctx.fillRect(
+						ctxPosition.x + noteWidth, ctxPosition.y,
+						noteWidth, noteHeight);
+					pctx.fillStyle = colorStyleFromShade(gridShades[2]);
+					pctx.fillRect(
+						ctxPosition.x, ctxPosition.y + noteHeight,
+						noteWidth, noteHeight);
+					pctx.fillStyle = colorStyleFromShade(gridShades[3]);
+					pctx.fillRect(
+						ctxPosition.x + noteWidth, ctxPosition.y + noteHeight,
+						noteWidth, noteHeight);
+				}
+			}
+		})();
+
+		var drawGrid = function()
+		{
+			ctx.drawImage(predrawnGridCanvas, 0, 0);
 		};
 
 		var drawNoteRect = function(rect)
@@ -267,9 +268,6 @@
 		var previousNotes;
 		var draw = function(notes)
 		{
-			ctx.fillStyle = makeColor(255, 255, 255).styleString();
-			ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
 			drawGrid();
 
 			if (previousNotes === undefined)
@@ -281,23 +279,6 @@
 				previousNotes = notes;
 			}
 			else drawNotes(previousNotes);
-		};
-
-
-
-		var onNoteAdded = function(note, allNotes)
-		{
-			draw(allNotes);
-		};
-
-		var cellFromCanvasPosition = function(x, y)
-		{
-			var locationOnGrid = makeVector(
-				x - canvasGridStart.x,
-				y - canvasGridStart.y);
-			return makeVector(
-				Math.floor(locationOnGrid.x / noteWidth),
-				Math.floor(locationOnGrid.y / noteHeight));
 		};
 
 		var mousePositionFromCanvasEvent = function(event)
@@ -329,8 +310,15 @@
 			if (drawingNote)
 			{
 				drawingNote = false;
+				var newX = (noteRectPending.x < 0) ? 0 : noteRectPending.x;
+				var newW = noteRectPending.w;
+				if (noteRectPending.x < 0)
+					newW += noteRectPending.x;
+				noteRectPending = makeRect(
+					newX, noteRectPending.y,
+					newW, noteRectPending.h);
 				for (var i=0; i<onNoteRectCreated.length; i++)
-					onNoteRectCreated[i](noteFromRect(noteRectPending.unreverse()));
+					onNoteRectCreated[i](noteFromRect(noteRectPending));
 				noteRectPending = makeRect(-1, -1, -1, -1);
 				draw();
 			}
@@ -364,8 +352,12 @@
 				var startCell = cellFromCanvasPosition(
 					noteRectPendingStart.x, noteRectPendingStart.y);
 				var distanceX = (highlightedCell.x + 1) - startCell.x;
+				if (distanceX > (canvasWidth)/noteWidth - startCell.x)
+					distanceX = (canvasWidth)/noteWidth - startCell.x;
+
 				var newX;
 				var newWidth = distanceX * noteWidth;
+
 				if (distanceX < 1)
 				{
 					newX = ((startCell.x - 1) + distanceX) * noteWidth;
@@ -376,9 +368,14 @@
 				noteRectPending = makeRect(
 					newX, noteRectPending.y,
 					newWidth, noteRectPending.h);
-			}
 
-			draw();
+				draw();
+			}
+			else if (mouse.x >= 0 || mouse.y >= 0 ||
+				mouse.x < canvasWidth || mouse.y < canvasHeight)
+			{
+				draw();
+			}
 		});
 
 		canvas.addEventListener("mouseleave", function()
@@ -394,19 +391,33 @@
 		// parameters: (note)
 		var onNoteRectCreated = [];
 
-		var addPadEvents = function(pad)
+		var onNoteAdded = function(note, allNotes)
 		{
-			pad.onNoteAdded.push(onNoteAdded);
+			draw(allNotes);
 		};
-
-		draw();
 
 		return {
 			draw: draw,
+			onNoteAdded: onNoteAdded,
 			onNoteRectRightClicked: onNoteRectRightClicked,
-			onNoteRectCreated: onNoteRectCreated,
-			addPadEvents: addPadEvents
+			onNoteRectCreated: onNoteRectCreated};
+	};
+
+	var makePadView = function(id)
+	{
+		var noteGrid = makeNoteGrid(id);
+
+		var addPadEvents = function(pad)
+		{
+			pad.onNoteAdded.push(noteGrid.onNoteAdded);
 		};
+
+		noteGrid.draw();
+
+		return {
+			onNoteRectRightClicked: noteGrid.onNoteRectRightClicked,
+			onNoteRectCreated: noteGrid.onNoteRectCreated,
+			addPadEvents: addPadEvents };
 	};
 
 	var makePad = function()
