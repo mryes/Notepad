@@ -68,19 +68,91 @@
 			styleString: styleString};
 	};
 
-	var makeNoteGrid = function(canvasID)
+	var colorStyleFromShade = function(shade)
 	{
-		var canvas = document.getElementById(canvasID);
-		var ctx = canvas.getContext("2d");
-		var canvasWidth = parseInt(canvas.getAttribute("width"));
-		var canvasHeight = parseInt(canvas.getAttribute("height"));
+		return makeColor(shade, shade, shade).styleString();
+	};
 
-		var gridColumns = 30;
-		var gridRows = 20;
-		var noteWidth = canvasWidth / gridColumns;
-		var noteHeight = canvasHeight / gridRows;
-		var firstVisibleColumn = 0;
-		var lastVisibleRow = 0;
+	var rectFromNote = function(note, grid)
+	{
+		var fullValue = note.pitch.fullValue();
+		var duration = note.durationInBeats;
+		var startTime = note.startTimeInBeats;
+		if (fullValue < grid.lastVisibleRow ||
+			fullValue > grid.lastVisibleRow + grid.gridColumns)
+			return makeRect(0, 0, 0, 0);
+		var bottomCell = grid.height - grid.noteHeight;
+		var x = startTime*grid.noteWidth;
+		var y = bottomCell -
+			((fullValue - grid.lastVisibleRow) * grid.noteHeight);
+		var w = duration * grid.noteWidth;
+		var h = grid.noteHeight;
+		return makeRect(x, y, w, h);
+	};
+
+	var noteFromRect = function(rect, grid)
+	{
+		var startTime = (rect.x) / grid.noteWidth;
+		var bottomCell = grid.height - grid.noteHeight;
+		var fullValue =
+			(bottomCell +
+			grid.lastVisibleRow*grid.noteHeight - rect.y) /
+			grid.noteHeight;
+		fullValue = Math.floor(fullValue);
+		var duration = rect.w / grid.noteWidth;
+		return {pitch: notepad.noteFromFullValue(fullValue),
+			startTimeInBeats: startTime,
+			durationInBeats: duration};
+	};
+
+	var cellFromCanvasPosition = function(x, y, grid)
+	{
+		return makeVector(
+			Math.floor(x / grid.noteWidth),
+			Math.floor(y / grid.noteHeight));
+	};
+
+	var mousePositionFromCanvasEvent = function(event, canvas, borderWidth)
+	{
+		var canvasRect = canvas.getBoundingClientRect();
+		var mouseX =
+			event.clientX - canvasRect.left - borderWidth*2;
+		var mouseY =
+			event.clientY - canvasRect.top - borderWidth*2;
+		return makeVector(mouseX, mouseY);
+	};
+
+	var triggerEvent = function(event)
+	{
+		var args = [];
+		for (var i=1; arguments[i] !== undefined; i++)
+			args.push(arguments[i]);
+		for (i=0; i<event.length; i++)
+			event[i].apply(this, args);
+	};
+
+	var makeNoteGrid = function(id, grid)
+	{
+		var canvasWidth = grid.width;
+		var canvasHeight = grid.height;
+		var canvas = document.createElement("canvas");
+		canvas.setAttribute("width", canvasWidth.toString());
+		canvas.setAttribute("height", canvasHeight.toString());
+		document.getElementById(id).appendChild(canvas);
+		var ctx = canvas.getContext("2d");
+
+		var borderWidth = 3;
+		canvas.style.border = borderWidth + "px solid";
+		canvas.style.borderRadius = "10px 0px 0px 10px";
+		canvas.style.padding = borderWidth + "px";
+		canvas.style.backgroundColor = "white";
+
+		var gridColumns = grid.gridColumns;
+		var gridRows = grid.gridRows;
+		var noteWidth = grid.noteWidth;
+		var noteHeight = grid.noteHeight;
+		var firstVisibleColumn = grid.firstVisibleColumn;
+		var lastVisibleRow = grid.lastVisibleRow;
 
 		var pointerLocation = makeVector(-1, -1);
 		var highlightedCell = makeVector(-1, -1);
@@ -89,56 +161,17 @@
 		var noteRectPendingStart = noteRectPending;
 		var drawingNote = false;
 
-		var rectFromNote = function(note)
-		{
-			var fullValue = note.pitch.fullValue();
-			var duration = note.durationInBeats;
-			var startTime = note.startTimeInBeats;
-			if (fullValue < lastVisibleRow ||
-				fullValue > lastVisibleRow + gridColumns)
-				return makeRect(0, 0, 0, 0);
-			var bottomCell = canvasHeight - noteHeight;
-			var x = startTime*noteWidth;
-			var y = bottomCell -
-				((fullValue - lastVisibleRow) * noteHeight);
-			var w = duration * noteWidth;
-			var h = noteHeight;
-			return makeRect(x, y, w, h);
-		};
-
-		var noteFromRect = function(rect)
-		{
-			var startTime = (rect.x) / noteWidth;
-			var bottomCell = canvasHeight - noteHeight;
-			var fullValue =
-				(bottomCell +
-				lastVisibleRow*noteHeight - rect.y) /
-				noteHeight;
-			fullValue = Math.floor(fullValue);
-			var duration = rect.w / noteWidth;
-			return {pitch: notepad.noteFromFullValue(fullValue),
-				startTimeInBeats: startTime,
-				durationInBeats: duration};
-		};
-
 		var noteAtPosition = function(position)
 		{
 			if (previousNotes === undefined)
 				return { found: false, value: undefined };
 			for (var i=0; i<previousNotes.length; i++)
 			{
-				var noteRect = rectFromNote(previousNotes[i]);
+				var noteRect = rectFromNote(previousNotes[i], grid);
 				if (noteRect.contains(position))
 					return { found: true, value: previousNotes[i] };
 			}
 			return { found: false, value: undefined };
-		};
-
-		var cellFromCanvasPosition = function(x, y)
-		{
-			return makeVector(
-				Math.floor(x / noteWidth),
-				Math.floor(y / noteHeight));
 		};
 
 		var predrawnGridCanvas = document.createElement("canvas");
@@ -150,12 +183,7 @@
 		{
 			var pctx = predrawnGridContext;
 
-			var gridShades = [230, 210, 250, 230];
-
-			var colorStyleFromShade = function(shade)
-			{
-				return makeColor(shade, shade, shade).styleString();
-			};
+			var gridShades = [242, 233, 255, 242];
 
 			for (var y=0; y<gridRows; y+=2)
 			{
@@ -229,7 +257,7 @@
 
 			for (var i = 0; i < notes.length; i++)
 			{
-				var noteRect = rectFromNote(notes[i]).unreverse();
+				var noteRect = rectFromNote(notes[i], grid).unreverse();
 
 				drawNoteRect(noteRect);
 
@@ -238,7 +266,7 @@
 					drawNoteHighlight(noteRect, pointingHighlightColor);
 					pointingAtNote = true;
 				}
-				else if (cellFromCanvasPosition(noteRect.x, noteRect.y)
+				else if (cellFromCanvasPosition(noteRect.x, noteRect.y, grid)
 						.equals(highlightedCell))
 					pointingAtNote = true;
 			}
@@ -247,7 +275,7 @@
 			drawNoteRect(pendingNoteUnreversed);
 			drawNoteHighlight(pendingNoteUnreversed, creatingHighlightColor);
 			if (pendingNoteUnreversed.contains(pointerLocation) ||
-				cellFromCanvasPosition(pendingNoteUnreversed.x, pendingNoteUnreversed.y)
+				cellFromCanvasPosition(pendingNoteUnreversed.x, pendingNoteUnreversed.y, grid)
 					.equals(highlightedCell))
 				pointingAtNote = true;
 
@@ -281,18 +309,11 @@
 			else drawNotes(previousNotes);
 		};
 
-		var mousePositionFromCanvasEvent = function(event)
-		{
-			var mouseX = event.clientX - canvas.getBoundingClientRect().left;
-			var mouseY = event.clientY - canvas.getBoundingClientRect().top;
-			return makeVector(mouseX, mouseY);
-		};
-
 		canvas.addEventListener("mousedown", function(event)
 		{
 			if (event.button !== 0)
 				return true;
-			var mouse = mousePositionFromCanvasEvent(event);
+			var mouse = mousePositionFromCanvasEvent(event, canvas, borderWidth);
 			event.preventDefault();
 			drawingNote = true;
 			noteRectPending = makeRect(
@@ -317,8 +338,7 @@
 				noteRectPending = makeRect(
 					newX, noteRectPending.y,
 					newW, noteRectPending.h);
-				for (var i=0; i<onNoteRectCreated.length; i++)
-					onNoteRectCreated[i](noteFromRect(noteRectPending));
+				triggerEvent(onNoteRectCreated, noteFromRect(noteRectPending, grid));
 				noteRectPending = makeRect(-1, -1, -1, -1);
 				draw();
 			}
@@ -328,13 +348,14 @@
 		{
 			event.preventDefault();
 
-			var mouse = mousePositionFromCanvasEvent(event);
+			var mouse = mousePositionFromCanvasEvent(event, canvas, borderWidth);
 
 			var note = noteAtPosition(mouse);
 			if (!note.found) return false;
 
-			for (var i=0; i<onNoteRectRightClicked.length; i++)
-				onNoteRectRightClicked[i](note.value);
+			//for (var i=0; i<onNoteRectRightClicked.length; i++)
+			//	onNoteRectRightClicked[i](note.value);
+			triggerEvent(onNoteRectRightClicked, note.value);
 
 			draw();
 
@@ -343,17 +364,19 @@
 
 		window.addEventListener("mousemove", function(event)
 		{
-			var mouse = mousePositionFromCanvasEvent(event);
-			highlightedCell = cellFromCanvasPosition(mouse.x, mouse.y);
+			var mouse = mousePositionFromCanvasEvent(event, canvas, borderWidth);
+			highlightedCell = cellFromCanvasPosition(mouse.x, mouse.y, grid);
 			pointerLocation = makeVector(mouse.x, mouse.y);
 
 			if (drawingNote)
 			{
 				var startCell = cellFromCanvasPosition(
-					noteRectPendingStart.x, noteRectPendingStart.y);
+					noteRectPendingStart.x, noteRectPendingStart.y, grid);
 				var distanceX = (highlightedCell.x + 1) - startCell.x;
-				if (distanceX > (canvasWidth)/noteWidth - startCell.x)
-					distanceX = (canvasWidth)/noteWidth - startCell.x;
+
+				var rightBoundary = (canvasWidth)/noteWidth - startCell.x;
+				if (distanceX > rightBoundary)
+					distanceX = rightBoundary;
 
 				var newX;
 				var newWidth = distanceX * noteWidth;
@@ -403,27 +426,124 @@
 			onNoteRectCreated: onNoteRectCreated};
 	};
 
+	var makeTonicGrid = function(id, grid)
+	{
+		var canvasWidth = grid.noteWidth;
+		var canvasHeight = grid.height;
+		var canvas = document.createElement("canvas");
+		canvas.setAttribute("width", canvasWidth.toString());
+		canvas.setAttribute("height", canvasHeight.toString());
+		document.getElementById(id).appendChild(canvas);
+		var ctx = canvas.getContext("2d");
+
+		var borderWidth = 3;
+		canvas.style.borderWidth =
+			borderWidth + "px " + borderWidth + "px " +
+			borderWidth + "px 0px";
+		canvas.style.borderStyle = "solid";
+		canvas.style.borderRadius = "0px 10px 10px 0px";
+		canvas.style.padding = borderWidth + "px";
+		canvas.style.backgroundColor = "gray";
+
+		var gridRows = grid.gridRows;
+		var noteWidth = grid.noteWidth;
+		var noteHeight = grid.noteHeight;
+		var firstVisibleColumn = grid.firstVisibleColumn;
+		var lastVisibleRow = grid.lastVisibleRow;
+
+		var predrawnGridCanvas = document.createElement("canvas");
+		predrawnGridCanvas.width = canvas.width;
+		predrawnGridCanvas.height = canvas.height;
+		var predrawnGridContext = predrawnGridCanvas.getContext("2d");
+
+		var tonicRect = makeRect(-1, -1, -1, -1);
+
+		(function predrawGrid()
+		{
+			var pctx = predrawnGridContext;
+
+			var darkShade = colorStyleFromShade(69);
+			var lightShade = colorStyleFromShade(83);
+
+			for (var i=0; i<gridRows; i++)
+			{
+				var ypos = i * noteHeight;
+				var shade = (i%2 === 0) ? darkShade : lightShade;
+				pctx.fillStyle = shade;
+				pctx.fillRect(0, ypos, canvasWidth, noteHeight);
+			}
+
+		})();
+
+		var draw = function()
+		{
+			ctx.drawImage(predrawnGridCanvas, 0, 0);
+			ctx.fillStyle = makeColor(200, 255, 0, 0.6).styleString();
+			ctx.fillRect(tonicRect.x, tonicRect.y, tonicRect.w, tonicRect.h);
+		};
+
+		canvas.addEventListener("click", function(event)
+		{
+			var mouseY = mousePositionFromCanvasEvent(event, canvas, borderWidth).y;
+			var cellY = cellFromCanvasPosition(0, mouseY, grid).y;
+			var pitch = noteFromRect(
+				makeRect(0, cellY * noteHeight, noteWidth, noteHeight), grid).pitch;
+			triggerEvent(onTonicRectClicked, pitch);
+		});
+
+		// parameters: (tonicPitch)
+		var onTonicRectClicked = [];
+
+		var onTonicChanged = function(tonic)
+		{
+			tonicRect = rectFromNote({
+				pitch: tonic,
+				startTimeInBeats: 0,
+				durationInBeats: 1}, grid);
+			draw();
+		};
+
+		return {
+			draw: draw,
+			onTonicRectClicked: onTonicRectClicked,
+			onTonicChanged: onTonicChanged} ;
+	};
+
 	var makePadView = function(id)
 	{
-		var noteGrid = makeNoteGrid(id);
+		var width = 600;
+		var height = 400;
+		var gridColumns = 30;
+		var gridRows = 20;
+		var gridMeasurements = {
+			width: width, height: height,
+			gridColumns: gridColumns, gridRows: gridRows,
+			noteWidth: width / gridColumns, noteHeight: height / gridRows,
+			firstVisibleColumn: 0, lastVisibleRow: 0};
+
+		var noteGrid = makeNoteGrid(id, gridMeasurements);
+		var tonicGrid = makeTonicGrid(id, gridMeasurements);
 
 		var addPadEvents = function(pad)
 		{
 			pad.onNoteAdded.push(noteGrid.onNoteAdded);
+			pad.onTonicChanged.push(tonicGrid.onTonicChanged);
 		};
 
 		noteGrid.draw();
+		tonicGrid.draw();
 
 		return {
 			onNoteRectRightClicked: noteGrid.onNoteRectRightClicked,
 			onNoteRectCreated: noteGrid.onNoteRectCreated,
+			onTonicRectClicked: tonicGrid.onTonicRectClicked,
 			addPadEvents: addPadEvents };
 	};
 
 	var makePad = function()
 	{
 		var notes = [];
-		var tonicNote = makeNote(0, 4);
+		var tonicPitch = makeNote(0, 4);
 
 		// parameters: (note, allNotes)
 		var onNoteAdded = [];
@@ -526,6 +646,12 @@
 			}
 		};
 
+		var setTonic = function(newTonic)
+		{
+			tonicPitch = newTonic;
+			triggerEvent(onTonicChanged, tonicPitch);
+		};
+
 		var addPadViewEvents = function(padView)
 		{
 			padView.onNoteRectRightClicked.push(removeNote);
@@ -533,6 +659,7 @@
 			{
 				addNote(note.pitch, note.startTimeInBeats, note.durationInBeats);
 			});
+			padView.onTonicRectClicked.push(setTonic);
 		};
 
 		return Object.freeze(
@@ -541,20 +668,15 @@
 			addPadViewEvents: addPadViewEvents,
 			onNoteAdded: onNoteAdded,
 			onTonicChanged: onTonicChanged,
-			get tonic() { return tonicNote; },
-			set tonic(newTonic)
-			{
-				tonicNote = newTonic;
-				for (var i=0; i<onTonicChanged.length; i++)
-					onTonicChanged[i](tonicNote);
-			}
+			get tonic() { return tonicPitch; },
+			set tonic(newTonic) { setTonic(newTonic); }
 		});
 	};
 
 	window.onload = function()
 	{
 		var pad = makePad();
-		var padView = makePadView("interface");
+		var padView = makePadView("notepad");
 		padView.addPadEvents(pad);
 		pad.addPadViewEvents(padView);
 	};
