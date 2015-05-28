@@ -534,7 +534,21 @@
 			ctx.fillStyle.addColorStop(0, makeColor(250, 255, 250).styleString());
 			ctx.fillStyle.addColorStop(0.5, makeColor(170, 225, 0).styleString());
 			ctx.fillStyle.addColorStop(1, makeColor(170, 225, 0).styleString());
-			ctx.fillRect(point.x, point.y, noteWidth, noteHeight);
+
+			// This is unfortunate
+			// (it's a house)
+			var roofHeight = noteHeight/2;
+			var bottomHeight = noteHeight - roofHeight;
+			ctx.beginPath();
+			ctx.moveTo(0, point.y + 1 + roofHeight);
+			ctx.lineTo(noteWidth/2, point.y);
+			ctx.lineTo(noteWidth, point.y + 1 + roofHeight);
+			ctx.fill();
+			ctx.fillRect(point.x + noteWidth/6, point.y + roofHeight, noteWidth*(2/3), bottomHeight);
+			ctx.fillStyle = makeColor(80, 130, 0).styleString();
+			ctx.fillRect(
+				point.x + noteWidth*(3/8), point.y + roofHeight + bottomHeight/2,
+				noteWidth*(1/4), bottomHeight*(1/2));
 		};
 
 		var draw = function()
