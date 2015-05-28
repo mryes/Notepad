@@ -122,6 +122,28 @@
 		return makeVector(mouseX, mouseY);
 	};
 
+	var tonicYPoints = function(tonic, grid)
+	{
+		var points = [];
+
+		var octave = 0;
+		var getFullValue = function(tonic, octave)
+		{
+			return makeNote(tonic, octave).fullValue();
+		};
+		var fullValue = getFullValue(tonic, octave);
+		while (makeNote(tonic, octave).fullValue()  <
+			grid.lastVisibleRow + grid.gridRows)
+		{
+			points.push(grid.height - grid.noteHeight -
+				fullValue * grid.noteHeight);
+			octave += 1;
+			fullValue = getFullValue(tonic, octave);
+		}
+
+		return points;
+	};
+
 	var triggerEvent = function(event)
 	{
 		var args = [];
@@ -159,6 +181,8 @@
 		var noteRectPending = makeRect(-1, -1, -1, -1);
 		var noteRectPendingStart = noteRectPending;
 		var drawingNote = false;
+
+		var tonicPoints = [];
 
 		var noteAtPosition = function(position)
 		{
@@ -215,6 +239,26 @@
 		var drawGrid = function()
 		{
 			ctx.drawImage(predrawnGridCanvas, 0, 0);
+
+			var tonicR = 110;
+			var tonicG = 175;
+			var tonicB = 0;
+			ctx.fillStyle = makeColor(tonicR, tonicG, tonicB, 0.2).styleString();
+			ctx.strokeStyle = makeColor(tonicR, tonicG, tonicB, 0.6).styleString();
+			for (var i=0; i<tonicPoints.length; i++)
+			{
+				ctx.fillRect(
+					0, tonicPoints[i],
+					canvasWidth, noteHeight);
+				ctx.lineWidth = 2;
+				ctx.beginPath();
+				ctx.moveTo(0, tonicPoints[i] + ctx.lineWidth/2);
+				ctx.lineTo(canvasWidth, tonicPoints[i] + ctx.lineWidth/2);
+				ctx.moveTo(0, tonicPoints[i] - ctx.lineWidth/2 + noteHeight);
+				ctx.lineTo(canvasWidth, tonicPoints[i] - ctx.lineWidth/2 + noteHeight);
+				ctx.stroke();
+			}
+
 		};
 
 		var drawNoteRect = function(rect)
@@ -416,11 +460,18 @@
 			draw(allNotes);
 		};
 
+		var onTonicChanged = function(tonic)
+		{
+			tonicPoints = tonicYPoints(tonic, grid);
+			draw();
+		};
+
 		return {
 			draw: draw,
 			onNoteAdded: onNoteAdded,
 			onNoteRectRightClicked: onNoteRectRightClicked,
-			onNoteRectCreated: onNoteRectCreated};
+			onNoteRectCreated: onNoteRectCreated,
+			onTonicChanged: onTonicChanged};
 	};
 
 	var makeTonicGrid = function(id, grid)
@@ -474,7 +525,7 @@
 
 		var drawTonicRect = function(ypos)
 		{
-			var point = makeVector(0, canvasHeight-noteHeight-ypos);
+			var point = makeVector(0, ypos);
 
 			ctx.fillStyle = ctx.createLinearGradient(
 				point.x, point.y,
@@ -531,22 +582,7 @@
 
 		var onTonicChanged = function(tonic)
 		{
-			tonicPoints = [];
-
-			var octave = 0;
-			var getFullValue = function(tonic, octave)
-			{
-				return makeNote(tonic, octave).fullValue();
-			};
-			var fullValue = getFullValue(tonic, octave);
-			while (makeNote(tonic, octave).fullValue()  <
-				lastVisibleRow + gridRows)
-			{
-				tonicPoints.push(fullValue * noteHeight);
-				octave += 1;
-				fullValue = getFullValue(tonic, octave);
-			}
-
+			tonicPoints = tonicYPoints(tonic, grid);
 			draw();
 		};
 
@@ -575,6 +611,7 @@
 		{
 			pad.onNoteAdded.push(noteGrid.onNoteAdded);
 			pad.onTonicChanged.push(tonicGrid.onTonicChanged);
+			pad.onTonicChanged.push(noteGrid.onTonicChanged);
 		};
 
 		noteGrid.draw();
