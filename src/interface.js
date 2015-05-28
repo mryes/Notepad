@@ -26,6 +26,24 @@
 				point.y > this.y && point.y < rectY2 ;
 		};
 
+		var intersects = function(rect)
+		{
+			var rectA = this;
+			var rectB = rect;
+			if (rectA.x2 === undefined)
+				rectA = rectA.twoPoints();
+			if (rectB.x2 === undefined)
+				rectB = rectB.twoPoints();
+
+			if (rectA.x1 < rectB.x2 && rectA.x2 > rectB.x1 &&
+				rectA.y1 < rectB.y2 && rectA.y2 > rectB.y1)
+			{
+				return true;
+			}
+
+			return false;
+		};
+
 		var unreverse = function()
 		{
 			var newSize = makeVector(
@@ -39,38 +57,26 @@
 			return makeRect(newX, newY, newSize.x, newSize.y);
 		};
 
-		return {
-			x:x, y:y, w:w, h:h,
-			contains: contains,
-			unreverse: unreverse};
-	};
-
-	var makeColor = function(r, g, b, a)
-	{
-		if (a === undefined)
-			a = 1;
-
-		var styleString = function()
+		var twoPoints = function()
 		{
-			var string = "(" + this.r + "," + this.g + "," + this.b;
-			if (this.a !== 1)
-			{
-				string = "rgba" + string;
-				string += "," + this.a;
-			}
-			else string = "rgb" + string;
-			string += ")";
-			return string;
+			return {
+				x1:x, y1:y,
+				x2:x+w, y2:y+h };
 		};
 
 		return {
-			r:r, g:g, b:b, a:a,
-			styleString: styleString};
+			x:x, y:y, w:w, h:h,
+			contains: contains,
+			intersects: intersects,
+			unreverse: unreverse,
+			twoPoints: twoPoints };
 	};
 
-	var colorStyleFromShade = function(shade)
+	var rectFromTwoPoints = function(x1, y1, x2, y2)
 	{
-		return makeColor(shade, shade, shade).styleString();
+		return makeRect(
+			x1, y1,
+			x2-x1, y2-y1 );
 	};
 
 	var rectFromNote = function(note, grid)
@@ -103,6 +109,34 @@
 		return {pitch: notepad.noteFromFullValue(fullValue),
 			startTimeInBeats: startTime,
 			durationInBeats: duration};
+	};
+
+	var makeColor = function(r, g, b, a)
+	{
+		if (a === undefined)
+			a = 1;
+
+		var styleString = function()
+		{
+			var string = "(" + this.r + "," + this.g + "," + this.b;
+			if (this.a !== 1)
+			{
+				string = "rgba" + string;
+				string += "," + this.a;
+			}
+			else string = "rgb" + string;
+			string += ")";
+			return string;
+		};
+
+		return {
+			r:r, g:g, b:b, a:a,
+			styleString: styleString};
+	};
+
+	var colorStyleFromShade = function(shade)
+	{
+		return makeColor(shade, shade, shade).styleString();
 	};
 
 	var cellFromCanvasPosition = function(x, y, grid)
@@ -531,7 +565,7 @@
 				point.x, point.y,
 				point.x, point.y + noteHeight);
 
-			ctx.fillStyle.addColorStop(0, makeColor(250, 255, 250).styleString());
+			ctx.fillStyle.addColorStop(0, makeColor(220, 255, 210).styleString());
 			ctx.fillStyle.addColorStop(0.5, makeColor(170, 225, 0).styleString());
 			ctx.fillStyle.addColorStop(1, makeColor(170, 225, 0).styleString());
 
@@ -544,11 +578,13 @@
 			ctx.lineTo(noteWidth/2, point.y);
 			ctx.lineTo(noteWidth, point.y + 1 + roofHeight);
 			ctx.fill();
-			ctx.fillRect(point.x + noteWidth/6, point.y + roofHeight, noteWidth*(2/3), bottomHeight);
+			ctx.fillRect(
+				point.x + noteWidth/6, point.y + roofHeight,
+				noteWidth*(2/3), bottomHeight);
 			ctx.fillStyle = makeColor(80, 130, 0).styleString();
 			ctx.fillRect(
 				point.x + noteWidth*(3/8), point.y + roofHeight + bottomHeight/2,
-				noteWidth*(1/4), bottomHeight*(1/2));
+				noteWidth/4, bottomHeight/2);
 		};
 
 		var draw = function()
@@ -641,6 +677,7 @@
 	var makePad = function()
 	{
 		var notes = [];
+		var selection = [];
 		var tonicPitch = makeNote(0, 4);
 
 		// parameters: (note, allNotes)
@@ -648,6 +685,9 @@
 
 		// parameters: (tonic)
 		var onTonicChanged = [];
+
+		// parameters: (selection)
+		var onSelectionChanged = [];
 
 		var overlappingNotes = function(note)
 		{
@@ -716,6 +756,9 @@
 
 			for (i=0; i<onNoteAdded.length; i++)
 				onNoteAdded[i](note, notes);
+
+			createSelectionBetween(note,
+				{ pitch: makeNote(0, 0), durationInBeats: 1, startTimeInBeats: 0});
 		};
 
 		var addNotes = function(notes)
@@ -744,6 +787,36 @@
 			}
 		};
 
+		var createSelectionBetween = function(noteA, noteB)
+		{
+			var pitchA = noteA.pitch.fullValue();
+			var startA = noteA.startTimeInBeats;
+			var pitchB = noteB.pitch.fullValue();
+			var startB = noteB.startTimeInBeats;
+
+			// Include start and end;
+			// How you do this depends on which note is greater
+			if (pitchA > pitchB) pitchA++; else pitchB++;
+			if (startA > startB) startA++; else startB++;
+
+			selection = [];
+
+			for (var i=0; i<notes.length; i++)
+			{
+				var pitch = notes[i].pitch.fullValue();
+				var start = notes[i].startTimeInBeats;
+				var dur = notes[i].durationInBeats;
+
+				if (rectFromTwoPoints(pitchA, startA, pitchB, startB).unreverse()
+					.intersects(makeRect(pitch, start, dur, 1)))
+				{
+					selection.push(notes[i]);
+				}
+			}
+
+			triggerEvent(onSelectionChanged, selection);
+		};
+
 		var setTonic = function(newTonic)
 		{
 			tonicPitch = newTonic;
@@ -766,6 +839,7 @@
 			addPadViewEvents: addPadViewEvents,
 			onNoteAdded: onNoteAdded,
 			onTonicChanged: onTonicChanged,
+			onSelectionChanged: onSelectionChanged,
 			get tonic() { return tonicPitch; },
 			set tonic(newTonic) { setTonic(newTonic); }
 		});
