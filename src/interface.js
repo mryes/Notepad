@@ -151,7 +151,6 @@
 		var gridRows = grid.gridRows;
 		var noteWidth = grid.noteWidth;
 		var noteHeight = grid.noteHeight;
-		var firstVisibleColumn = grid.firstVisibleColumn;
 		var lastVisibleRow = grid.lastVisibleRow;
 
 		var pointerLocation = makeVector(-1, -1);
@@ -353,8 +352,6 @@
 			var note = noteAtPosition(mouse);
 			if (!note.found) return false;
 
-			//for (var i=0; i<onNoteRectRightClicked.length; i++)
-			//	onNoteRectRightClicked[i](note.value);
 			triggerEvent(onNoteRectRightClicked, note.value);
 
 			draw();
@@ -448,7 +445,6 @@
 		var gridRows = grid.gridRows;
 		var noteWidth = grid.noteWidth;
 		var noteHeight = grid.noteHeight;
-		var firstVisibleColumn = grid.firstVisibleColumn;
 		var lastVisibleRow = grid.lastVisibleRow;
 
 		var predrawnGridCanvas = document.createElement("canvas");
@@ -456,7 +452,8 @@
 		predrawnGridCanvas.height = canvas.height;
 		var predrawnGridContext = predrawnGridCanvas.getContext("2d");
 
-		var tonicRect = makeRect(-1, -1, -1, -1);
+		var tonicPoints = [];
+		var highlightedCell = -1;
 
 		(function predrawGrid()
 		{
@@ -475,20 +472,58 @@
 
 		})();
 
+		var drawTonicRect = function(ypos)
+		{
+			var point = makeVector(0, canvasHeight-noteHeight-ypos);
+
+			ctx.fillStyle = ctx.createLinearGradient(
+				point.x, point.y,
+				point.x, point.y + noteHeight);
+
+			ctx.fillStyle.addColorStop(0, makeColor(250, 255, 250).styleString());
+			ctx.fillStyle.addColorStop(0.5, makeColor(170, 225, 0).styleString());
+			ctx.fillStyle.addColorStop(1, makeColor(170, 225, 0).styleString());
+			ctx.fillRect(point.x, point.y, noteWidth, noteHeight);
+		};
+
 		var draw = function()
 		{
 			ctx.drawImage(predrawnGridCanvas, 0, 0);
-			ctx.fillStyle = makeColor(200, 255, 0, 0.6).styleString();
-			ctx.fillRect(tonicRect.x, tonicRect.y, tonicRect.w, tonicRect.h);
+
+			for (var i=0; i<tonicPoints.length; i++)
+				drawTonicRect(tonicPoints[i]);
+
+			ctx.fillStyle = makeColor(255, 255, 255, 0.5).styleString();
+			ctx.fillRect(0, highlightedCell * noteHeight, noteWidth, noteHeight);
 		};
 
 		canvas.addEventListener("click", function(event)
 		{
 			var mouseY = mousePositionFromCanvasEvent(event, canvas, borderWidth).y;
+			if (mouseY < borderWidth) return true;
 			var cellY = cellFromCanvasPosition(0, mouseY, grid).y;
 			var pitch = noteFromRect(
 				makeRect(0, cellY * noteHeight, noteWidth, noteHeight), grid).pitch;
-			triggerEvent(onTonicRectClicked, pitch);
+			triggerEvent(onTonicRectClicked, pitch.value);
+		});
+
+		canvas.addEventListener("mouseenter", function()
+		{
+			document.body.style.cursor = "pointer";
+		});
+
+		canvas.addEventListener("mouseleave", function()
+		{
+			document.body.style.cursor = "auto";
+			highlightedCell = -1;
+			draw();
+		});
+
+		canvas.addEventListener("mousemove", function(event)
+		{
+			var mouse = mousePositionFromCanvasEvent(event, canvas, borderWidth);
+			highlightedCell = cellFromCanvasPosition(mouse.x, mouse.y, grid).y;
+			draw();
 		});
 
 		// parameters: (tonicPitch)
@@ -496,10 +531,22 @@
 
 		var onTonicChanged = function(tonic)
 		{
-			tonicRect = rectFromNote({
-				pitch: tonic,
-				startTimeInBeats: 0,
-				durationInBeats: 1}, grid);
+			tonicPoints = [];
+
+			var octave = 0;
+			var getFullValue = function(tonic, octave)
+			{
+				return makeNote(tonic, octave).fullValue();
+			};
+			var fullValue = getFullValue(tonic, octave);
+			while (makeNote(tonic, octave).fullValue()  <
+				lastVisibleRow + gridRows)
+			{
+				tonicPoints.push(fullValue * noteHeight);
+				octave += 1;
+				fullValue = getFullValue(tonic, octave);
+			}
+
 			draw();
 		};
 
@@ -519,7 +566,7 @@
 			width: width, height: height,
 			gridColumns: gridColumns, gridRows: gridRows,
 			noteWidth: width / gridColumns, noteHeight: height / gridRows,
-			firstVisibleColumn: 0, lastVisibleRow: 0};
+			lastVisibleRow: 0};
 
 		var noteGrid = makeNoteGrid(id, gridMeasurements);
 		var tonicGrid = makeTonicGrid(id, gridMeasurements);
@@ -679,6 +726,7 @@
 		var padView = makePadView("notepad");
 		padView.addPadEvents(pad);
 		pad.addPadViewEvents(padView);
+		pad.tonic = 0;
 	};
 
 })();
