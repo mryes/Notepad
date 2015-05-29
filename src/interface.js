@@ -232,7 +232,7 @@
 	var modes = makeEnum(["normal", "select"]);
 	var defaultMode = modes.normal;
 
-	var makeNoteGrid = function(id, grid)
+	var makeNoteGrid = function(id, grid, pad)
 	{
 		var canvasWidth = grid.width;
 		var canvasHeight = grid.height;
@@ -256,10 +256,12 @@
 
 		var pointerLocation = makeVector(-1, -1);
 		var highlightedCell = makeVector(-1, -1);
+		var mouseWithinBounds = false;
 
 		var noteRectPending = makeRect(-1, -1, -1, -1);
 		var noteRectPendingStart = noteRectPending;
 		var drawingNote = false;
+		var movingNote = false;
 
 		var tonicPoints = [];
 
@@ -445,19 +447,22 @@
 
 		canvas.addEventListener("mousedown", function(event)
 		{
-			if (event.button !== 0)
-				return true;
+			if (event.button !== 0) return;
 			event.preventDefault();
 
-			beginDrawingNote();
+			var noteHere = noteAtPosition(pointerLocation);
+			if (noteHere.found)
+			{
+
+			}
+			else beginDrawingNote();
 
 			draw();
 		});
 
 		window.addEventListener("mouseup", function(event)
 		{
-			if (event.button !== 0)
-				return true;
+			if (event.button !== 0) return;
 			if (drawingNote)
 			{
 				drawingNote = false;
@@ -468,7 +473,7 @@
 				noteRectPending = makeRect(
 					newX, noteRectPending.y,
 					newW, noteRectPending.h);
-				triggerEvent(onNoteRectCreated, noteFromRect(noteRectPending, grid));
+				pad.addNote(noteFromRect(noteRectPending, grid));
 				noteRectPending = makeRect(-1, -1, -1, -1);
 				draw();
 			}
@@ -483,7 +488,7 @@
 			var note = noteAtPosition(mouse);
 			if (!note.found) return false;
 
-			triggerEvent(onNoteRectRightClicked, note.value);
+			pad.removeNote(note.value);
 
 			draw();
 
@@ -529,24 +534,40 @@
 			}
 		});
 
+		canvas.addEventListener("mouseenter", function()
+		{
+			mouseWithinBounds = true;
+		});
+
 		canvas.addEventListener("mouseleave", function()
 		{
 			highlightedCell = makeVector(-1, -1);
 			pointerLocation = makeVector(-1, -1);
+			mouseWithinBounds = false;
 			draw();
 		});
 
-		// parameters: (note)
-		var onNoteRectRightClicked = [];
+		var shiftKey = 16;
 
-		// parameters: (note)
-		var onNoteRectCreated = [];
+		document.addEventListener("keydown", function(event)
+		{
+			if (!mouseWithinBounds) return;
+			event.preventDefault();
+			if (event.keyCode === shiftKey)
+			{
+				pad.mode = modes.select;
+			}
+		});
 
-		// parameters: (mode)
-		var onModeTriggerActivated = [];
-
-		// parameters: none
-		var onModeTriggerDeactivated = [];
+		document.addEventListener("keyup", function(event)
+		{
+			event.preventDefault();
+			if (event.keyCode === shiftKey)
+			{
+				if (pad.mode === modes.select)
+					pad.mode = modes.normal;
+			}
+		});
 
 		var onNoteAdded = function(note, allNotes)
 		{
@@ -571,16 +592,13 @@
 
 		return {
 			draw: draw,
-			onNoteRectRightClicked: onNoteRectRightClicked,
-			onNoteRectCreated: onNoteRectCreated,
-			onModeTriggerActivated: onModeTriggerActivated,
-			onModeTriggerDeactivated: onModeTriggerDeactivated,
 			onNoteAdded: onNoteAdded,
 			onSelectionChanged: onSelectionChanged,
-			onTonicChanged: onTonicChanged };
+			onTonicChanged: onTonicChanged,
+			onModeChanged: onModeChanged };
 	};
 
-	var makeTonicGrid = function(id, grid)
+	var makeTonicGrid = function(id, grid, pad)
 	{
 		var canvasWidth = grid.noteWidth;
 		var canvasHeight = grid.height;
@@ -633,7 +651,7 @@
 		{
 			var point = makeVector(0, ypos);
 
-			ctx.fillStyle = makeColor(190, 235, 130).styleString();
+			ctx.fillStyle = makeColor(200, 255, 120).styleString();
 
 			// This is unfortunate
 			// (it's a house)
@@ -671,7 +689,8 @@
 			var cellY = cellFromCanvasPosition(0, mouseY, grid).y;
 			var pitch = noteFromRect(
 				makeRect(0, cellY * noteHeight, noteWidth, noteHeight), grid).pitch;
-			triggerEvent(onTonicRectClicked, pitch.value);
+			//triggerEvent(onTonicRectClicked, pitch.value);
+			pad.tonic = pitch.value;
 		});
 
 		canvas.addEventListener("mouseenter", function()
@@ -693,9 +712,6 @@
 			draw();
 		});
 
-		// parameters: (tonicPitch)
-		var onTonicRectClicked = [];
-
 		var onTonicChanged = function(tonic)
 		{
 			tonicPoints = tonicYPoints(tonic, grid);
@@ -704,11 +720,10 @@
 
 		return {
 			draw: draw,
-			onTonicRectClicked: onTonicRectClicked,
-			onTonicChanged: onTonicChanged} ;
+			onTonicChanged: onTonicChanged };
 	};
 
-	var makePadView = function(id)
+	var startPadView = function(id, pad)
 	{
 		var width = 600;
 		var height = 400;
@@ -720,28 +735,19 @@
 			noteWidth: width / gridColumns, noteHeight: height / gridRows,
 			lastVisibleRow: 0};
 
-		var noteGrid = makeNoteGrid(id, gridMeasurements);
-		var tonicGrid = makeTonicGrid(id, gridMeasurements);
+		var noteGrid = makeNoteGrid(id, gridMeasurements, pad);
+		var tonicGrid = makeTonicGrid(id, gridMeasurements, pad);
 
-		var addPadEvents = function(pad)
-		{
-			pad.onNoteAdded.push(noteGrid.onNoteAdded);
-			pad.onSelectionChanged.push(noteGrid.onSelectionChanged);
-			pad.onTonicChanged.push(tonicGrid.onTonicChanged);
-			pad.onTonicChanged.push(noteGrid.onTonicChanged);
-			pad.onModeChanged.push(noteGrid.onModeChanged);
-		};
+		pad.onNoteAdded.push(noteGrid.onNoteAdded);
+		pad.onSelectionChanged.push(noteGrid.onSelectionChanged);
+		pad.onTonicChanged.push(tonicGrid.onTonicChanged);
+		pad.onTonicChanged.push(noteGrid.onTonicChanged);
+		pad.onModeChanged.push(noteGrid.onModeChanged);
 
 		noteGrid.draw();
 		tonicGrid.draw();
 
-		return {
-			onNoteRectRightClicked: noteGrid.onNoteRectRightClicked,
-			onNoteRectCreated: noteGrid.onNoteRectCreated,
-			onTonicRectClicked: tonicGrid.onTonicRectClicked,
-			onModeTriggerActivated: noteGrid.onModeTriggerActivated,
-			onModeTriggerDeactivated: noteGrid.onModeTriggerDeactivated,
-			addPadEvents: addPadEvents };
+		return { };
 	};
 
 	var makePad = function()
@@ -751,18 +757,6 @@
 		var tonicPitch = makePitch(0, 4);
 
 		var currentMode = defaultMode;
-
-		// parameters: (note, allNotes)
-		var onNoteAdded = [];
-
-		// parameters: (tonic)
-		var onTonicChanged = [];
-
-		// parameters: (selection)
-		var onSelectionChanged = [];
-
-		// parameters: (mode)
-		var onModeChanged = [];
 
 		var overlappingNotes = function(note)
 		{
@@ -892,38 +886,40 @@
 		var changeMode = function(mode)
 		{
 			currentMode = mode;
-			triggerEvent(onModeChanged);
+			triggerEvent(onModeChanged, mode);
 		};
 
-		var addPadViewEvents = function(padView)
-		{
-			padView.onNoteRectRightClicked.push(removeNote);
-			padView.onNoteRectCreated.push(function(note)
-			{
-				addNote(note);
-			});
-			padView.onTonicRectClicked.push(setTonic);
-		};
+		// parameters: (note, allNotes)
+		var onNoteAdded = [];
+
+		// parameters: (tonic)
+		var onTonicChanged = [];
+
+		// parameters: (selection)
+		var onSelectionChanged = [];
+
+		// parameters: (mode)
+		var onModeChanged = [];
 
 		return Object.freeze(
 		{
 			addNote: addNote, addNotes: addNotes,
-			addPadViewEvents: addPadViewEvents,
+			removeNote: removeNote,
+			get mode() { return mode; },
+			set mode(newMode) { changeMode(newMode); },
+			get tonic() { return tonicPitch; },
+			set tonic(newTonic) { setTonic(newTonic); },
 			onNoteAdded: onNoteAdded,
 			onTonicChanged: onTonicChanged,
 			onSelectionChanged: onSelectionChanged,
-			onModeChanged: onModeChanged,
-			get tonic() { return tonicPitch; },
-			set tonic(newTonic) { setTonic(newTonic); }
+			onModeChanged: onModeChanged
 		});
 	};
 
 	window.onload = function()
 	{
 		var pad = makePad();
-		var padView = makePadView("notepad");
-		padView.addPadEvents(pad);
-		pad.addPadViewEvents(padView);
+		startPadView("notepad", pad);
 		pad.tonic = 0;
 	};
 
