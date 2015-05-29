@@ -2,7 +2,38 @@
 {
 	"use strict";
 
-	var makeNote = notepad.makeNote;
+	var makePitch = notepad.makePitch;
+
+	var makeNote = function(pitch, startTimeInBeats, durationInBeats)
+	{
+		var toString = function()
+		{
+			return pitch.toString() +
+				startTimeInBeats + " " + durationInBeats;
+		};
+
+		var equals = function(note)
+		{
+			return pitch === note.pitch &&
+				startTimeInBeats === note.startTimeInBeats &&
+				durationInBeats === note.durationInBeats;
+		};
+
+		return Object.freeze({
+			pitch: pitch,
+			startTimeInBeats: startTimeInBeats,
+			durationInBeats: durationInBeats,
+			equals: equals,
+			toString: toString });
+	};
+
+	var noteFromString = function(string)
+	{
+		var nums = string.split(" ");
+		return makeNote(
+			notepad.pitchFromString(string),
+			parseFloat(nums[2]), parseFloat(nums[3]));
+	};
 
 	var makeVector = function(x, y)
 	{
@@ -106,9 +137,9 @@
 			grid.noteHeight;
 		fullValue = Math.floor(fullValue);
 		var duration = rect.w / grid.noteWidth;
-		return {pitch: notepad.noteFromFullValue(fullValue),
-			startTimeInBeats: startTime,
-			durationInBeats: duration};
+		return makeNote(
+			notepad.noteFromFullValue(fullValue),
+			startTime, duration);
 	};
 
 	var makeColor = function(r, g, b, a)
@@ -139,6 +170,17 @@
 		return makeColor(shade, shade, shade).styleString();
 	};
 
+	var makeEnum = function(ids)
+	{
+		if (ids.constructor !== Array)
+			throw new TypeError("Expected array");
+
+		var obj = {};
+		for (var i=0; i<ids.length; i++)
+			obj[ids[i]] = i;
+		return obj;
+	};
+
 	var cellFromCanvasPosition = function(x, y, grid)
 	{
 		return makeVector(
@@ -163,10 +205,10 @@
 		var octave = 0;
 		var getFullValue = function(tonic, octave)
 		{
-			return makeNote(tonic, octave).fullValue();
+			return makePitch(tonic, octave).fullValue();
 		};
 		var fullValue = getFullValue(tonic, octave);
-		while (makeNote(tonic, octave).fullValue()  <
+		while (makePitch(tonic, octave).fullValue()  <
 			grid.lastVisibleRow + grid.gridRows)
 		{
 			points.push(grid.height - grid.noteHeight -
@@ -186,6 +228,9 @@
 		for (i=0; i<event.length; i++)
 			event[i].apply(this, args);
 	};
+
+	var modes = makeEnum(["normal", "select"]);
+	var defaultMode = modes.normal;
 
 	var makeNoteGrid = function(id, grid)
 	{
@@ -217,6 +262,8 @@
 		var drawingNote = false;
 
 		var tonicPoints = [];
+
+		var currentMode = defaultMode;
 
 		var noteAtPosition = function(position)
 		{
@@ -386,18 +433,24 @@
 			else drawNotes(previousNotes);
 		};
 
-		canvas.addEventListener("mousedown", function(event)
+		var beginDrawingNote = function()
 		{
-			if (event.button !== 0)
-				return true;
-			var mouse = mousePositionFromCanvasEvent(event, canvas, borderWidth);
-			event.preventDefault();
 			drawingNote = true;
 			noteRectPending = makeRect(
 				highlightedCell.x * noteWidth,
 				highlightedCell.y * noteHeight,
 				noteWidth, noteHeight);
 			noteRectPendingStart = noteRectPending;
+		};
+
+		canvas.addEventListener("mousedown", function(event)
+		{
+			if (event.button !== 0)
+				return true;
+			event.preventDefault();
+
+			beginDrawingNote();
+
 			draw();
 		});
 
@@ -489,9 +542,19 @@
 		// parameters: (note)
 		var onNoteRectCreated = [];
 
+		// parameters: (mode)
+		var onModeTriggerActivated = [];
+
+		// parameters: none
+		var onModeTriggerDeactivated = [];
+
 		var onNoteAdded = function(note, allNotes)
 		{
 			draw(allNotes);
+		};
+
+		var onSelectionChanged = function(selection)
+		{
 		};
 
 		var onTonicChanged = function(tonic)
@@ -500,12 +563,21 @@
 			draw();
 		};
 
+		var onModeChanged = function(mode)
+		{
+			// Probably should display this somewhere
+			currentMode = mode;
+		};
+
 		return {
 			draw: draw,
-			onNoteAdded: onNoteAdded,
 			onNoteRectRightClicked: onNoteRectRightClicked,
 			onNoteRectCreated: onNoteRectCreated,
-			onTonicChanged: onTonicChanged};
+			onModeTriggerActivated: onModeTriggerActivated,
+			onModeTriggerDeactivated: onModeTriggerDeactivated,
+			onNoteAdded: onNoteAdded,
+			onSelectionChanged: onSelectionChanged,
+			onTonicChanged: onTonicChanged };
 	};
 
 	var makeTonicGrid = function(id, grid)
@@ -561,13 +633,7 @@
 		{
 			var point = makeVector(0, ypos);
 
-			ctx.fillStyle = ctx.createLinearGradient(
-				point.x, point.y,
-				point.x, point.y + noteHeight);
-
-			ctx.fillStyle.addColorStop(0, makeColor(220, 255, 210).styleString());
-			ctx.fillStyle.addColorStop(0.5, makeColor(170, 225, 0).styleString());
-			ctx.fillStyle.addColorStop(1, makeColor(170, 225, 0).styleString());
+			ctx.fillStyle = makeColor(190, 235, 130).styleString();
 
 			// This is unfortunate
 			// (it's a house)
@@ -581,7 +647,7 @@
 			ctx.fillRect(
 				point.x + noteWidth/6, point.y + roofHeight,
 				noteWidth*(2/3), bottomHeight);
-			ctx.fillStyle = makeColor(80, 130, 0).styleString();
+			ctx.fillStyle = makeColor(110, 160, 0).styleString();
 			ctx.fillRect(
 				point.x + noteWidth*(3/8), point.y + roofHeight + bottomHeight/2,
 				noteWidth/4, bottomHeight/2);
@@ -660,8 +726,10 @@
 		var addPadEvents = function(pad)
 		{
 			pad.onNoteAdded.push(noteGrid.onNoteAdded);
+			pad.onSelectionChanged.push(noteGrid.onSelectionChanged);
 			pad.onTonicChanged.push(tonicGrid.onTonicChanged);
 			pad.onTonicChanged.push(noteGrid.onTonicChanged);
+			pad.onModeChanged.push(noteGrid.onModeChanged);
 		};
 
 		noteGrid.draw();
@@ -671,6 +739,8 @@
 			onNoteRectRightClicked: noteGrid.onNoteRectRightClicked,
 			onNoteRectCreated: noteGrid.onNoteRectCreated,
 			onTonicRectClicked: tonicGrid.onTonicRectClicked,
+			onModeTriggerActivated: noteGrid.onModeTriggerActivated,
+			onModeTriggerDeactivated: noteGrid.onModeTriggerDeactivated,
 			addPadEvents: addPadEvents };
 	};
 
@@ -678,7 +748,9 @@
 	{
 		var notes = [];
 		var selection = [];
-		var tonicPitch = makeNote(0, 4);
+		var tonicPitch = makePitch(0, 4);
+
+		var currentMode = defaultMode;
 
 		// parameters: (note, allNotes)
 		var onNoteAdded = [];
@@ -688,6 +760,9 @@
 
 		// parameters: (selection)
 		var onSelectionChanged = [];
+
+		// parameters: (mode)
+		var onModeChanged = [];
 
 		var overlappingNotes = function(note)
 		{
@@ -712,13 +787,8 @@
 			return overlapping;
 		};
 
-		var addNote = function(pitch, startTimeInBeats, durationInBeats)
+		var addNote = function(note)
 		{
-			var note = {
-				pitch: pitch,
-				startTimeInBeats: startTimeInBeats,
-				durationInBeats: durationInBeats};
-
 			var overlapping= overlappingNotes(note);
 			var newNotes = [];
 			for (var i=0; i<overlapping.length; i++)
@@ -739,13 +809,15 @@
 						duration: oldNoteEnd - overlap.end};
 
 				if (pieces.before !== undefined)
-					newNotes.push({pitch: pitch,
-						startTimeInBeats: pieces.before.start,
-						durationInBeats: pieces.before.duration});
+					newNotes.push(makeNote(
+						note.pitch,
+						pieces.before.start,
+						pieces.before.duration));
 				if (pieces.after !== undefined)
-					newNotes.push({pitch: pitch,
-						startTimeInBeats: pieces.after.start,
-						durationInBeats: pieces.after.duration});
+					newNotes.push(makeNote(
+						note.pitch,
+						pieces.after.start,
+						pieces.after.duration));
 
 				removeNote(oldNote);
 			}
@@ -756,18 +828,12 @@
 
 			for (i=0; i<onNoteAdded.length; i++)
 				onNoteAdded[i](note, notes);
-
-			createSelectionBetween(note,
-				{ pitch: makeNote(0, 0), durationInBeats: 1, startTimeInBeats: 0});
 		};
 
 		var addNotes = function(notes)
 		{
 			for (var i=0; i<notes.length; i++)
-				addNote(
-					notes[i].pitch,
-					notes[i].startTimeInBeats,
-					notes[i].durationInBeats);
+				addNote(notes[i]);
 		};
 
 		var removeNote = function(note)
@@ -799,7 +865,7 @@
 			if (pitchA > pitchB) pitchA++; else pitchB++;
 			if (startA > startB) startA++; else startB++;
 
-			selection = [];
+			selection = {};
 
 			for (var i=0; i<notes.length; i++)
 			{
@@ -810,7 +876,7 @@
 				if (rectFromTwoPoints(pitchA, startA, pitchB, startB).unreverse()
 					.intersects(makeRect(pitch, start, dur, 1)))
 				{
-					selection.push(notes[i]);
+					selection[notes[i]] = true;
 				}
 			}
 
@@ -823,12 +889,18 @@
 			triggerEvent(onTonicChanged, tonicPitch);
 		};
 
+		var changeMode = function(mode)
+		{
+			currentMode = mode;
+			triggerEvent(onModeChanged);
+		};
+
 		var addPadViewEvents = function(padView)
 		{
 			padView.onNoteRectRightClicked.push(removeNote);
 			padView.onNoteRectCreated.push(function(note)
 			{
-				addNote(note.pitch, note.startTimeInBeats, note.durationInBeats);
+				addNote(note);
 			});
 			padView.onTonicRectClicked.push(setTonic);
 		};
@@ -840,6 +912,7 @@
 			onNoteAdded: onNoteAdded,
 			onTonicChanged: onTonicChanged,
 			onSelectionChanged: onSelectionChanged,
+			onModeChanged: onModeChanged,
 			get tonic() { return tonicPitch; },
 			set tonic(newTonic) { setTonic(newTonic); }
 		});

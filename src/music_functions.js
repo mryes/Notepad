@@ -100,7 +100,7 @@ notepad.notes = {};
 		return value % notesInOctave;
 	};
 
-	notepad.makeNote = notepad.namedTuple(["value", "octave"], function(obj)
+	notepad.makePitch = notepad.namedTuple(["value", "octave"], function(obj)
 	{
 		var valueFromLetter = notepad.valueFromLetter;
 		var notesInOctave = notepad.notesInOctave;
@@ -150,6 +150,12 @@ notepad.notes = {};
 		};
 	});
 
+	notepad.pitchFromString = function(string)
+	{
+		var nums = string.split(" ");
+		return makeNote(parseFloat(nums[0]), parseFloat(nums[1]));
+	};
+
 	notepad.noteFromFullValue = function(fullValue)
 	{
 		var notesInOctave = notepad.notesInOctave;
@@ -162,7 +168,7 @@ notepad.notes = {};
 
 	notepad.notesFromIntervals = function(intervals, baseNote)
 	{
-		var makeNote = notepad.makeNote;
+		var makeNote = notepad.makePitch;
 
 		var notes = [];
 		notes.push(makeNote(baseNote.value, baseNote.octave));
@@ -208,7 +214,7 @@ notepad.notes = {};
 		return compatibleList;
 	};
 
-	var makeNote = notepad.makeNote;
+	var makeNote = notepad.makePitch;
 	var scales = notepad.scales;
 
 	console.log(notepad.compatibleChords(scales.major, makeNote(2, 5), makeNote(1, 5)));
