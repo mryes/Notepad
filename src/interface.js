@@ -265,8 +265,6 @@
 
 		var tonicPoints = [];
 
-		var currentMode = defaultMode;
-
 		var noteAtPosition = function(position)
 		{
 			if (previousNotes === undefined)
@@ -584,18 +582,11 @@
 			draw();
 		};
 
-		var onModeChanged = function(mode)
-		{
-			// Probably should display this somewhere
-			currentMode = mode;
-		};
-
 		return {
 			draw: draw,
 			onNoteAdded: onNoteAdded,
 			onSelectionChanged: onSelectionChanged,
-			onTonicChanged: onTonicChanged,
-			onModeChanged: onModeChanged };
+			onTonicChanged: onTonicChanged };
 	};
 
 	var makeTonicGrid = function(id, grid, pad)
@@ -742,7 +733,6 @@
 		pad.onSelectionChanged.push(noteGrid.onSelectionChanged);
 		pad.onTonicChanged.push(tonicGrid.onTonicChanged);
 		pad.onTonicChanged.push(noteGrid.onTonicChanged);
-		pad.onModeChanged.push(noteGrid.onModeChanged);
 
 		noteGrid.draw();
 		tonicGrid.draw();
@@ -883,12 +873,6 @@
 			triggerEvent(onTonicChanged, tonicPitch);
 		};
 
-		var changeMode = function(mode)
-		{
-			currentMode = mode;
-			triggerEvent(onModeChanged, mode);
-		};
-
 		// parameters: (note, allNotes)
 		var onNoteAdded = [];
 
@@ -898,21 +882,17 @@
 		// parameters: (selection)
 		var onSelectionChanged = [];
 
-		// parameters: (mode)
-		var onModeChanged = [];
-
 		return Object.freeze(
 		{
 			addNote: addNote, addNotes: addNotes,
 			removeNote: removeNote,
 			get mode() { return mode; },
-			set mode(newMode) { changeMode(newMode); },
+			set mode(newMode) { currentMode = newMode; },
 			get tonic() { return tonicPitch; },
 			set tonic(newTonic) { setTonic(newTonic); },
 			onNoteAdded: onNoteAdded,
 			onTonicChanged: onTonicChanged,
 			onSelectionChanged: onSelectionChanged,
-			onModeChanged: onModeChanged
 		});
 	};
 
