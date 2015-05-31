@@ -295,17 +295,31 @@
 		var noteHeight = grid.noteHeight;
 		var lastVisibleRow = grid.lastVisibleRow;
 
-		var pointerPosition = makeVector(-1, -1);
-		var highlightedCell = makeVector(-1, -1); // todo: make this a function
-		var mouseWithinBounds = false; // this too?
+		var noteRectActions =
+			makeEnum(["none", "creating", "moving", "resizing"]);
+		var noteRectPendingHorizLeeway = 0.04;
 
-		var noteRectActions = makeEnum(["none", "creating", "moving"]);
+		// UI state ----------------------------
+
+		var pointerPosition = makeVector(-1, -1);
+		var mouseWithinBounds = false;
+		var isPointingAtNote = false;
+		var wasPointingAtNote = false;
+
 		var currentNoteRectAction = noteRectActions.none;
 		var noteRectPending = makeRect(-1, -1, -1, -1);
 		var noteRectPendingStart = noteRectPending;
 		var noteRectPendingGrabOffset = makeVector(-1, -1, -1);
 
 		var tonicPoints = [];
+
+		// UI state end -------------------------
+
+		var highlightedCell = function()
+		{
+			return cellFromCanvasPosition(
+				pointerPosition.x, pointerPosition.y, grid);
+		};
 
 		var noteAtPosition = function(position)
 		{
@@ -381,7 +395,6 @@
 				ctx.lineTo(canvasWidth, tonicPoints[i] - ctx.lineWidth/2 + noteHeight);
 				ctx.stroke();
 			}
-
 		};
 
 		var drawNoteRect = function(rect)
@@ -433,7 +446,7 @@
 					pointingAtNote = true;
 				}
 				else if (cellFromCanvasPosition(noteRect.x, noteRect.y, grid)
-						.equals(highlightedCell))
+						.equals(highlightedCell()))
 					pointingAtNote = true;
 			}
 
@@ -442,17 +455,17 @@
 			drawNoteHighlight(pendingNoteUnreversed, creatingHighlightColor);
 			if (pendingNoteUnreversed.contains(pointerPosition) ||
 				cellFromCanvasPosition(pendingNoteUnreversed.x, pendingNoteUnreversed.y, grid)
-					.equals(highlightedCell))
+					.equals(highlightedCell()))
 				pointingAtNote = true;
 
 			if (pointingAtNote)
-				ctx.strokeStyle = makeColor(255, 255, 255).styleString();
-			else ctx.strokeStyle = makeColor(0, 0, 0).styleString();
+				ctx.strokeStyle = makeColor(255, 255, 255, 0.5).styleString();
+			else ctx.strokeStyle = makeColor(0, 0, 0, 0.5).styleString();
 			var strokeWidth = noteWidth / 10;
 			ctx.lineWidth = strokeWidth;
 			ctx.strokeRect(
-				highlightedCell.x * noteWidth + strokeWidth*2 ,
-				highlightedCell.y * noteHeight + strokeWidth*2,
+				highlightedCell().x * noteWidth + strokeWidth*2 ,
+				highlightedCell().y * noteHeight + strokeWidth*2,
 				noteWidth - strokeWidth*4,
 				noteHeight - strokeWidth*4);
 		};
@@ -475,12 +488,17 @@
 			else drawNotes(previousNotes);
 		};
 
+		var pendingNoteActive = function()
+		{
+			return noteRectPending.w !== -1;
+		};
+
 		var beginCreatingNote = function()
 		{
 			currentNoteRectAction = noteRectActions.creating;
 			noteRectPending = makeRect(
-				highlightedCell.x * noteWidth,
-				highlightedCell.y * noteHeight,
+				highlightedCell().x * noteWidth,
+				highlightedCell().y * noteHeight,
 				noteWidth, noteHeight);
 			noteRectPendingStart = noteRectPending;
 		};
@@ -494,6 +512,27 @@
 				pointerPosition.x - noteRectPending.position.x;
 		};
 
+		var beginResizingNote = function(note)
+		{
+			currentNoteRectAction = noteRectActions.resizing;
+
+		};
+
+		var pointingAtSideOfNoteRect = function(noteRect)
+		{
+			noteRect = noteRect.twoPoints();
+			var rectWidth = noteRect.x2 - noteRect.x1;
+			var leewayLeft = rectFromTwoPoints(
+				noteRect.x1, noteRect.y1,
+				noteRect.x1 + rectWidth*noteRectPendingHorizLeeway,
+				noteRect.y2);
+			var leewayRight = rectFromTwoPoints(
+				noteRect.x2 - rectWidth*noteRectPendingHorizLeeway,
+				noteRect.y1, noteRect.x2, noteRect.y2);
+			return (leewayLeft.contains(pointerPosition) ||
+				leewayRight.contains(pointerPosition));
+		};
+
 		canvas.addEventListener("mousedown", function(event)
 		{
 			if (event.button !== 0) return;
@@ -502,7 +541,10 @@
 			var noteHere = noteAtPosition(pointerPosition);
 			if (noteHere.found)
 			{
-				beginMovingNote(noteHere.value);
+				if (pointingAtSideOfNoteRect(rectFromNote(noteHere.value, grid)))
+					beginResizingNote(noteHere.value);
+				else beginMovingNote(noteHere.value);
+				updateCursor(noteHere.value);
 			}
 			else beginCreatingNote();
 
@@ -512,6 +554,7 @@
 		window.addEventListener("mouseup", function(event)
 		{
 			if (event.button !== 0) return;
+
 			if (currentNoteRectAction === noteRectActions.creating)
 			{
 				currentNoteRectAction = noteRectActions.none;
@@ -533,6 +576,12 @@
 				noteRectPending = makeRect(-1, -1, -1, -1);
 				draw();
 			}
+			else if (currentNoteRectAction === noteRectActions.resizing)
+			{
+				currentNoteRectAction = noteRectActions.none;
+			}
+
+			updateCursor(updatePointingState());
 		});
 
 		canvas.addEventListener("contextmenu", function(event)
@@ -551,17 +600,59 @@
 			return false;
 		});
 
+		var updatePointingState = function()
+		{
+			var noteHere = noteAtPosition(pointerPosition);
+
+			if (noteHere.found || pendingNoteActive())
+				isPointingAtNote = true;
+			else
+			{
+				wasPointingAtNote = isPointingAtNote;
+				isPointingAtNote = false;
+			}
+
+			if (noteHere.found)
+				return {found: true, value: rectFromNote(noteHere.value, grid)};
+			else if (pendingNoteActive())
+				return {found: true, value: noteRectPending};
+			else return {found: false};
+		};
+
+		var changeCursorTo = function(cursorName)
+		{
+			if (document.body.style.cursor !== cursorName)
+				document.body.style.cursor = cursorName;
+		};
+
+		var updateCursor = function(noteHere)
+		{
+			if (isPointingAtNote)
+			{
+				if (currentNoteRectAction === noteRectActions.creating)
+					changeCursorTo("auto");
+				else if (noteHere.found && pointingAtSideOfNoteRect(noteHere.value))
+					changeCursorTo("ew-resize");
+				else if (currentNoteRectAction === noteRectActions.moving)
+					changeCursorTo("grabbing");
+				else changeCursorTo("grab");
+			}
+			else changeCursorTo("auto");
+		};
+
 		window.addEventListener("mousemove", function(event)
 		{
 			var mouse = mousePositionFromCanvasEvent(event, canvas, borderWidth);
-			highlightedCell = cellFromCanvasPosition(mouse.x, mouse.y, grid);
 			pointerPosition = makeVector(mouse.x, mouse.y);
+
+			if (mouseWithinBounds)
+				updateCursor(updatePointingState());
 
 			if (currentNoteRectAction === noteRectActions.creating)
 			{
 				var startCell = cellFromCanvasPosition(
 					noteRectPendingStart.x, noteRectPendingStart.y, grid);
-				var distanceX = (highlightedCell.x + 1) - startCell.x;
+				var distanceX = (highlightedCell().x + 1) - startCell.x;
 
 				var rightBoundary = (canvasWidth)/noteWidth - startCell.x;
 				if (distanceX > rightBoundary)
@@ -585,7 +676,7 @@
 			}
 			else if (currentNoteRectAction === noteRectActions.moving)
 			{
-				var gridPointer = toNearestCellOrigin(pointerPosition, grid)
+				var gridPointer = toNearestCellOrigin(pointerPosition, grid);
 				var newPos = toNearestCellOrigin(
 					gridPointer	.subtract(makeVector(noteRectPendingGrabOffset, 0))
 						.add(makeVector(noteWidth, 0)),
@@ -609,7 +700,6 @@
 
 		canvas.addEventListener("mouseleave", function()
 		{
-			highlightedCell = makeVector(-1, -1);
 			pointerPosition = makeVector(-1, -1);
 			mouseWithinBounds = false;
 			draw();
@@ -750,7 +840,6 @@
 			var cellY = cellFromCanvasPosition(0, mouseY, grid).y;
 			var pitch = noteFromRect(
 				makeRect(0, cellY * noteHeight, noteWidth, noteHeight), grid).pitch;
-			//triggerEvent(onTonicRectClicked, pitch.value);
 			pad.tonic = pitch.value;
 		});
 
