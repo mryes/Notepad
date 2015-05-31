@@ -42,9 +42,32 @@
 			return this.x === other.x && this.y === other.y;
 		};
 
-		return {
+		var add = function(other)
+		{
+			return makeVector(this.x + other.x, this.y + other.y);
+		};
+
+		var subtract = function(other)
+		{
+			return makeVector(this.x - other.x, this.y - other.y);
+		};
+
+		var scale = function(x, y)
+		{
+			return makeVector(this.x * x, this.y * y);
+		};
+
+		var toString = function()
+		{
+			return x + " " + y;
+		};
+
+		return Object.freeze({
 			x:x, y:y,
-			equals: equals};
+			equals: equals,
+			add: add, subtract: subtract,
+			scale: scale,
+			toString: toString });
 	};
 
 	var makeRect = function(x, y, w, h)
@@ -95,12 +118,24 @@
 				x2:x+w, y2:y+h };
 		};
 
+		var translate = function(x, y)
+		{
+			return makeRect(
+				this.x + x, this.y + y,
+				this.w, this.h);
+		};
+
 		return {
 			x:x, y:y, w:w, h:h,
 			contains: contains,
 			intersects: intersects,
 			unreverse: unreverse,
-			twoPoints: twoPoints };
+			twoPoints: twoPoints,
+			translate: translate,
+			get position()
+			{
+				return makeVector(this.x, this.y);
+			}};
 	};
 
 	var rectFromTwoPoints = function(x1, y1, x2, y2)
@@ -188,6 +223,12 @@
 			Math.floor(y / grid.noteHeight));
 	};
 
+	var toNearestCellOrigin = function(position, grid)
+	{
+		return cellFromCanvasPosition(position.x, position.y, grid)
+			.scale(grid.noteWidth, grid.noteHeight);
+	};
+
 	var mousePositionFromCanvasEvent = function(event, canvas, borderWidth)
 	{
 		var canvasRect = canvas.getBoundingClientRect();
@@ -254,14 +295,15 @@
 		var noteHeight = grid.noteHeight;
 		var lastVisibleRow = grid.lastVisibleRow;
 
-		var pointerLocation = makeVector(-1, -1);
-		var highlightedCell = makeVector(-1, -1);
-		var mouseWithinBounds = false;
+		var pointerPosition = makeVector(-1, -1);
+		var highlightedCell = makeVector(-1, -1); // todo: make this a function
+		var mouseWithinBounds = false; // this too?
 
+		var noteRectActions = makeEnum(["none", "creating", "moving"]);
+		var currentNoteRectAction = noteRectActions.none;
 		var noteRectPending = makeRect(-1, -1, -1, -1);
 		var noteRectPendingStart = noteRectPending;
-		var drawingNote = false;
-		var movingNote = false;
+		var noteRectPendingGrabOffset = makeVector(-1, -1, -1);
 
 		var tonicPoints = [];
 
@@ -385,7 +427,7 @@
 
 				drawNoteRect(noteRect);
 
-				if (noteRect.contains(pointerLocation))
+				if (noteRect.contains(pointerPosition))
 				{
 					drawNoteHighlight(noteRect, pointingHighlightColor);
 					pointingAtNote = true;
@@ -398,7 +440,7 @@
 			var pendingNoteUnreversed = noteRectPending.unreverse();
 			drawNoteRect(pendingNoteUnreversed);
 			drawNoteHighlight(pendingNoteUnreversed, creatingHighlightColor);
-			if (pendingNoteUnreversed.contains(pointerLocation) ||
+			if (pendingNoteUnreversed.contains(pointerPosition) ||
 				cellFromCanvasPosition(pendingNoteUnreversed.x, pendingNoteUnreversed.y, grid)
 					.equals(highlightedCell))
 				pointingAtNote = true;
@@ -433,9 +475,9 @@
 			else drawNotes(previousNotes);
 		};
 
-		var beginDrawingNote = function()
+		var beginCreatingNote = function()
 		{
-			drawingNote = true;
+			currentNoteRectAction = noteRectActions.creating;
 			noteRectPending = makeRect(
 				highlightedCell.x * noteWidth,
 				highlightedCell.y * noteHeight,
@@ -443,17 +485,26 @@
 			noteRectPendingStart = noteRectPending;
 		};
 
+		var beginMovingNote = function(note)
+		{
+			currentNoteRectAction = noteRectActions.moving;
+			pad.removeNote(note);
+			noteRectPending = rectFromNote(note, grid);
+			noteRectPendingGrabOffset =
+				pointerPosition.x - noteRectPending.position.x;
+		};
+
 		canvas.addEventListener("mousedown", function(event)
 		{
 			if (event.button !== 0) return;
 			event.preventDefault();
 
-			var noteHere = noteAtPosition(pointerLocation);
+			var noteHere = noteAtPosition(pointerPosition);
 			if (noteHere.found)
 			{
-
+				beginMovingNote(noteHere.value);
 			}
-			else beginDrawingNote();
+			else beginCreatingNote();
 
 			draw();
 		});
@@ -461,9 +512,9 @@
 		window.addEventListener("mouseup", function(event)
 		{
 			if (event.button !== 0) return;
-			if (drawingNote)
+			if (currentNoteRectAction === noteRectActions.creating)
 			{
-				drawingNote = false;
+				currentNoteRectAction = noteRectActions.none;
 				var newX = (noteRectPending.x < 0) ? 0 : noteRectPending.x;
 				var newW = noteRectPending.w;
 				if (noteRectPending.x < 0)
@@ -471,6 +522,13 @@
 				noteRectPending = makeRect(
 					newX, noteRectPending.y,
 					newW, noteRectPending.h);
+				pad.addNote(noteFromRect(noteRectPending, grid));
+				noteRectPending = makeRect(-1, -1, -1, -1);
+				draw();
+			}
+			else if (currentNoteRectAction === noteRectActions.moving)
+			{
+				currentNoteRectAction = noteRectActions.none;
 				pad.addNote(noteFromRect(noteRectPending, grid));
 				noteRectPending = makeRect(-1, -1, -1, -1);
 				draw();
@@ -497,9 +555,9 @@
 		{
 			var mouse = mousePositionFromCanvasEvent(event, canvas, borderWidth);
 			highlightedCell = cellFromCanvasPosition(mouse.x, mouse.y, grid);
-			pointerLocation = makeVector(mouse.x, mouse.y);
+			pointerPosition = makeVector(mouse.x, mouse.y);
 
-			if (drawingNote)
+			if (currentNoteRectAction === noteRectActions.creating)
 			{
 				var startCell = cellFromCanvasPosition(
 					noteRectPendingStart.x, noteRectPendingStart.y, grid);
@@ -525,6 +583,18 @@
 
 				draw();
 			}
+			else if (currentNoteRectAction === noteRectActions.moving)
+			{
+				var gridPointer = toNearestCellOrigin(pointerPosition, grid)
+				var newPos = toNearestCellOrigin(
+					gridPointer	.subtract(makeVector(noteRectPendingGrabOffset, 0))
+						.add(makeVector(noteWidth, 0)),
+					grid);
+				noteRectPending = makeRect(
+					newPos.x, newPos.y,
+					noteRectPending.w, noteRectPending.h);
+				draw();
+			}
 			else if (mouse.x >= 0 || mouse.y >= 0 ||
 				mouse.x < canvasWidth || mouse.y < canvasHeight)
 			{
@@ -540,7 +610,7 @@
 		canvas.addEventListener("mouseleave", function()
 		{
 			highlightedCell = makeVector(-1, -1);
-			pointerLocation = makeVector(-1, -1);
+			pointerPosition = makeVector(-1, -1);
 			mouseWithinBounds = false;
 			draw();
 		});
