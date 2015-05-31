@@ -631,10 +631,10 @@
 			{
 				if (currentNoteRectAction === noteRectActions.creating)
 					changeCursorTo("auto");
-				else if (noteHere.found && pointingAtSideOfNoteRect(noteHere.value))
-					changeCursorTo("ew-resize");
 				else if (currentNoteRectAction === noteRectActions.moving)
 					changeCursorTo("grabbing");
+				else if (noteHere.found && pointingAtSideOfNoteRect(noteHere.value))
+					changeCursorTo("ew-resize");
 				else changeCursorTo("grab");
 			}
 			else changeCursorTo("auto");
