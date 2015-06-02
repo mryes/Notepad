@@ -297,7 +297,8 @@
 
 		var noteRectActions =
 			makeEnum(["none", "creating", "moving", "resizing"]);
-		var noteRectPendingHorizLeeway = 0.04;
+		var noteRectPendingHorizLeeway = 0.25;
+		var grabSide = makeEnum(["none", "left", "right"]);
 
 		// UI state ----------------------------
 
@@ -309,7 +310,8 @@
 		var currentNoteRectAction = noteRectActions.none;
 		var noteRectPending = makeRect(-1, -1, -1, -1);
 		var noteRectPendingStart = noteRectPending;
-		var noteRectPendingGrabOffset = makeVector(-1, -1, -1);
+		var movingGrabOffset = makeVector(-1, -1, -1);
+		var resizingGrabSide = grabSide.none;
 
 		var tonicPoints = [];
 
@@ -508,29 +510,44 @@
 			currentNoteRectAction = noteRectActions.moving;
 			pad.removeNote(note);
 			noteRectPending = rectFromNote(note, grid);
-			noteRectPendingGrabOffset =
+			movingGrabOffset =
 				pointerPosition.x - noteRectPending.position.x;
 		};
 
-		var beginResizingNote = function(note)
+		var beginResizingNote = function(note, side)
 		{
 			currentNoteRectAction = noteRectActions.resizing;
-
+			pad.removeNote(note);
+			noteRectPending = rectFromNote(note, grid);
+			noteRectPendingStart = noteRectPending;
+			if (side === grabSide.left)
+			{
+				var pending2P = noteRectPending.twoPoints();
+				noteRectPendingStart = makeRect(
+					pending2P.x2 - noteWidth, noteRectPending.y,
+					-noteRectPending.w + noteWidth, noteRectPending.h);
+			}
+			resizingGrabSide = side;
 		};
 
 		var pointingAtSideOfNoteRect = function(noteRect)
 		{
 			noteRect = noteRect.twoPoints();
-			var rectWidth = noteRect.x2 - noteRect.x1;
 			var leewayLeft = rectFromTwoPoints(
 				noteRect.x1, noteRect.y1,
-				noteRect.x1 + rectWidth*noteRectPendingHorizLeeway,
+				noteRect.x1 + noteWidth*noteRectPendingHorizLeeway,
 				noteRect.y2);
 			var leewayRight = rectFromTwoPoints(
-				noteRect.x2 - rectWidth*noteRectPendingHorizLeeway,
+				noteRect.x2 - noteWidth*noteRectPendingHorizLeeway,
 				noteRect.y1, noteRect.x2, noteRect.y2);
-			return (leewayLeft.contains(pointerPosition) ||
+			var side = grabSide.none;
+			if (leewayLeft.contains(pointerPosition))
+				side = grabSide.left;
+			else if (leewayRight.contains(pointerPosition))
+				side = grabSide.right;
+			var found =  (leewayLeft.contains(pointerPosition) ||
 				leewayRight.contains(pointerPosition));
+			return {found: found, side: side};
 		};
 
 		canvas.addEventListener("mousedown", function(event)
@@ -541,8 +558,10 @@
 			var noteHere = noteAtPosition(pointerPosition);
 			if (noteHere.found)
 			{
-				if (pointingAtSideOfNoteRect(rectFromNote(noteHere.value, grid)))
-					beginResizingNote(noteHere.value);
+				var result = pointingAtSideOfNoteRect(
+					rectFromNote(noteHere.value, grid));
+				if (result.found)
+					beginResizingNote(noteHere.value, result.side);
 				else beginMovingNote(noteHere.value);
 				updateCursor(noteHere.value);
 			}
@@ -569,16 +588,13 @@
 				noteRectPending = makeRect(-1, -1, -1, -1);
 				draw();
 			}
-			else if (currentNoteRectAction === noteRectActions.moving)
+			else if (currentNoteRectAction === noteRectActions.moving ||
+				currentNoteRectAction === noteRectActions.resizing)
 			{
 				currentNoteRectAction = noteRectActions.none;
 				pad.addNote(noteFromRect(noteRectPending, grid));
 				noteRectPending = makeRect(-1, -1, -1, -1);
 				draw();
-			}
-			else if (currentNoteRectAction === noteRectActions.resizing)
-			{
-				currentNoteRectAction = noteRectActions.none;
 			}
 
 			updateCursor(updatePointingState());
@@ -627,17 +643,81 @@
 
 		var updateCursor = function(noteHere)
 		{
+			if (!mouseWithinBounds)
+				return;
 			if (isPointingAtNote)
 			{
 				if (currentNoteRectAction === noteRectActions.creating)
 					changeCursorTo("auto");
 				else if (currentNoteRectAction === noteRectActions.moving)
 					changeCursorTo("grabbing");
-				else if (noteHere.found && pointingAtSideOfNoteRect(noteHere.value))
+				else if ((noteHere.found &&
+					pointingAtSideOfNoteRect(noteHere.value).found) ||
+					currentNoteRectAction === noteRectActions.resizing)
 					changeCursorTo("ew-resize");
 				else changeCursorTo("grab");
 			}
 			else changeCursorTo("auto");
+		};
+
+		var updateNoteRectCreation = function()
+		{
+			var startCell = cellFromCanvasPosition(
+				noteRectPendingStart.x, noteRectPendingStart.y, grid);
+			var distanceX = (highlightedCell().x + 1) - startCell.x;
+
+			var rightBoundary = (canvasWidth)/noteWidth - startCell.x;
+			if (distanceX > rightBoundary)
+				distanceX = rightBoundary;
+
+			var newX;
+			var newWidth = distanceX * noteWidth;
+
+			if (distanceX < 1)
+			{
+				newX = ((startCell.x - 1) + distanceX) * noteWidth;
+				newWidth = ((startCell.x + 1) * noteWidth) - newX;
+			}
+			else newX = noteRectPendingStart.x;
+
+			noteRectPending = makeRect(
+				newX, noteRectPending.y,
+				newWidth, noteRectPending.h);
+
+			draw();
+		};
+
+		var updateNoteRectMovement = function()
+		{
+			var gridPointer = toNearestCellOrigin(pointerPosition, grid);
+			var newPos = toNearestCellOrigin(
+				gridPointer	.subtract(makeVector(movingGrabOffset, 0))
+					.add(makeVector(noteWidth, 0)),
+				grid);
+			noteRectPending = makeRect(
+				newPos.x, newPos.y,
+				noteRectPending.w, noteRectPending.h);
+			draw();
+		};
+
+		var updateNoteRectResize = function()
+		{
+			if (resizingGrabSide === grabSide.right)
+			{
+				var newX = pointerPosition.x + noteWidth;
+				/*if (newX < noteRectPending.x + noteWidth)
+					newX = noteRectPending.x + noteWidth;*/
+				var newY = noteRectPending.y + noteRectPending.h
+				var newP2 = toNearestCellOrigin(makeVector(newX, newY), grid);
+				noteRectPending = rectFromTwoPoints(
+					noteRectPending.x, noteRectPending.y,
+					newP2.x, newP2.y).unreverse();
+			}
+			else if (resizingGrabSide === grabSide.left)
+			{
+
+			}
+			draw();
 		};
 
 		window.addEventListener("mousemove", function(event)
@@ -645,47 +725,14 @@
 			var mouse = mousePositionFromCanvasEvent(event, canvas, borderWidth);
 			pointerPosition = makeVector(mouse.x, mouse.y);
 
-			if (mouseWithinBounds)
-				updateCursor(updatePointingState());
+			updateCursor(updatePointingState());
 
 			if (currentNoteRectAction === noteRectActions.creating)
-			{
-				var startCell = cellFromCanvasPosition(
-					noteRectPendingStart.x, noteRectPendingStart.y, grid);
-				var distanceX = (highlightedCell().x + 1) - startCell.x;
-
-				var rightBoundary = (canvasWidth)/noteWidth - startCell.x;
-				if (distanceX > rightBoundary)
-					distanceX = rightBoundary;
-
-				var newX;
-				var newWidth = distanceX * noteWidth;
-
-				if (distanceX < 1)
-				{
-					newX = ((startCell.x - 1) + distanceX) * noteWidth;
-					newWidth = ((startCell.x + 1) * noteWidth) - newX;
-				}
-				else newX = noteRectPendingStart.x;
-
-				noteRectPending = makeRect(
-					newX, noteRectPending.y,
-					newWidth, noteRectPending.h);
-
-				draw();
-			}
+				updateNoteRectCreation();
 			else if (currentNoteRectAction === noteRectActions.moving)
-			{
-				var gridPointer = toNearestCellOrigin(pointerPosition, grid);
-				var newPos = toNearestCellOrigin(
-					gridPointer	.subtract(makeVector(noteRectPendingGrabOffset, 0))
-						.add(makeVector(noteWidth, 0)),
-					grid);
-				noteRectPending = makeRect(
-					newPos.x, newPos.y,
-					noteRectPending.w, noteRectPending.h);
-				draw();
-			}
+				updateNoteRectMovement();
+			else if (currentNoteRectAction === noteRectActions.resizing)
+				updateNoteRectCreation();
 			else if (mouse.x >= 0 || mouse.y >= 0 ||
 				mouse.x < canvasWidth || mouse.y < canvasHeight)
 			{
