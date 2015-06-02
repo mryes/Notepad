@@ -700,26 +700,6 @@
 			draw();
 		};
 
-		var updateNoteRectResize = function()
-		{
-			if (resizingGrabSide === grabSide.right)
-			{
-				var newX = pointerPosition.x + noteWidth;
-				/*if (newX < noteRectPending.x + noteWidth)
-					newX = noteRectPending.x + noteWidth;*/
-				var newY = noteRectPending.y + noteRectPending.h
-				var newP2 = toNearestCellOrigin(makeVector(newX, newY), grid);
-				noteRectPending = rectFromTwoPoints(
-					noteRectPending.x, noteRectPending.y,
-					newP2.x, newP2.y).unreverse();
-			}
-			else if (resizingGrabSide === grabSide.left)
-			{
-
-			}
-			draw();
-		};
-
 		window.addEventListener("mousemove", function(event)
 		{
 			var mouse = mousePositionFromCanvasEvent(event, canvas, borderWidth);
