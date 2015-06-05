@@ -89,13 +89,8 @@
 			if (rectB.x2 === undefined)
 				rectB = rectB.twoPoints();
 
-			if (rectA.x1 < rectB.x2 && rectA.x2 > rectB.x1 &&
-				rectA.y1 < rectB.y2 && rectA.y2 > rectB.y1)
-			{
-				return true;
-			}
-
-			return false;
+			return (rectA.x1 < rectB.x2 && rectA.x2 > rectB.x1 &&
+				rectA.y1 < rectB.y2 && rectA.y2 > rectB.y1);
 		};
 
 		var unreverse = function()
@@ -959,6 +954,16 @@
 
 		var addNote = function(note)
 		{
+			if (note.startTimeInBeats < 0)
+			{
+				note = makeNote(
+					note.pitch, 0,
+					note.durationInBeats + note.startTimeInBeats);
+			}
+
+			if (note.startTimeInBeats + note.durationInBeats < 1)
+				return;
+
 			var overlapping= overlappingNotes(note);
 			var newNotes = [];
 			for (var i=0; i<overlapping.length; i++)
